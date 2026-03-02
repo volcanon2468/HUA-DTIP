@@ -1,0 +1,102 @@
+# Model architecture hyperparameters
+
+imu_encoder:
+  cnn_channels: [64, 128, 256]
+  kernel_sizes: [5, 7, 11]
+  transformer_heads: 8
+  transformer_layers: 3
+  transformer_dim: 256
+  dropout: 0.1
+  output_dim: 256
+
+cardio_encoder:
+  resblock_channels: [64, 128, 128]
+  resblock_kernels: [7, 5, 3]
+  attn_heads: 4
+  output_dim: 128
+
+feature_encoder:
+  input_dim: 48
+  hidden_dims: [128, 128]
+  output_dim: 64
+  dropout: 0.3
+
+fusion:
+  common_dim: 128
+  transformer_heads: 4
+  transformer_layers: 2
+  ff_dim: 256
+  output_dim: 128
+
+micro_scale:
+  tcn_channels: 256
+  tcn_kernel: 3
+  tcn_dilations: [1, 2, 4, 8]
+  transformer_heads: 8
+  transformer_layers: 3
+  transformer_dim: 256
+  ff_dim: 512
+  output_dim: 256
+  sequence_len: 180   # ~1 hour buffer
+
+meso_scale:
+  input_dim: 512
+  transformer_heads: 8
+  transformer_layers: 4
+  ff_dim: 1024
+  recency_weights: [0.05, 0.07, 0.10, 0.12, 0.16, 0.20, 0.30]
+  output_dim: 512
+  sequence_len: 7
+
+macro_scale:
+  input_dim: 640
+  block_dim: 256
+  output_dim: 128
+  sequence_len: 6
+
+hierarchical_fusion:
+  projected_dim: 256
+  output_dim: 512
+
+twin_vae:
+  input_dim: 512
+  hidden_dims: [256, 128]
+  latent_dim: 10
+  decoder_hidden: [64, 128, 256]
+  pred_head_hidden: 64
+  pred_output_dim: 6
+  beta: 4.0
+
+latent_sde:
+  latent_dim: 10
+  activity_input_dim: 6
+  activity_hidden: 32
+  activity_output_dim: 64
+  rest_input_dim: 3
+  rest_hidden: 16
+  rest_output_dim: 32
+  drift_hidden: 128
+  diffusion_hidden: 32
+
+sac:
+  state_dim: 68
+  action_dim: 6
+  actor_hidden: [256, 256]
+  critic_hidden: [256, 256]
+  target_entropy: -6.0
+
+drift:
+  adwin_delta: 0.002
+  mmd_kernel_sigma: 1.0
+  mmd_df: 128
+  autoencoder_hidden: [64, 32]
+  autoencoder_input_dim: 128
+  novelty_percentile: 95
+
+federated:
+  n_clusters: 4
+  proximal_mu: 0.01
+  local_epochs: 5
+  dp_epsilon: 1.0
+  dp_delta: 1.0e-5
+  dp_clip_norm: 1.0

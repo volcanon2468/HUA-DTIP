@@ -1,0 +1,46 @@
+# Dataset paths and preprocessing parameters
+
+paths:
+  mhealth: data/raw/mhealth
+  pamap2: data/raw/pamap2
+  ppg_4week: data/raw/ppg_4week
+  stroke_rehab: data/raw/stroke_rehab
+  capture24: data/raw/capture24
+  mex: data/raw/mex
+  processed: data/processed
+
+window:
+  size: 1000          # samples (20s @ 50Hz)
+  stride: 500         # 50% overlap
+  sample_rate: 50     # Hz
+
+normalization:
+  method: per_subject_zscore
+
+missing_data:
+  interpolate_threshold: 0.10   # interpolate if <10% missing
+  discard_threshold: 0.30       # discard window if >30% missing
+
+hrv:
+  features: [SDNN, RMSSD, LF, HF, LF_HF_ratio]
+
+mhealth:
+  n_subjects: 10
+  n_imu_channels: 9
+  n_ecg_channels: 2
+  n_activity_classes: 12
+
+pamap2:
+  n_subjects: 9
+  subject_ids: [101, 102, 103, 104, 105, 106, 107, 108, 109]
+  n_activity_classes: 18
+
+ppg_4week:
+  n_subjects: 49
+  n_days: 28
+
+capture24:
+  n_subjects: 151
+
+mex:
+  n_subjects: 30

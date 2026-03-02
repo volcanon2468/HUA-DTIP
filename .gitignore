@@ -1,0 +1,48 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Data — raw and processed data never goes to git
+data/raw/
+data/processed/
+
+# Model checkpoints and results (large binary files)
+checkpoints/
+results/
+
+# WandB
+wandb/
+
+# Hydra outputs
+outputs/
+.hydra/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env vars
+.env
+*.env
