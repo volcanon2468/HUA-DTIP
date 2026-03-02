@@ -1,12 +1,3 @@
-"""
-Preprocessing orchestrator — run this to convert all raw datasets into
-windowed .pt tensors and daily summaries.
-
-Usage:
-    python -m src.preprocessing.run_preprocessing \
-        --config-path ../../configs \
-        --config-name data
-"""
 import os
 import numpy as np
 import hydra
@@ -14,12 +5,9 @@ from omegaconf import DictConfig
 
 from src.preprocessing.dataset_loaders import (
     MHEALTHDataset, PAMAP2Dataset, FourWeekPPGDataset,
-    StrokeRehabDataset, CAPTURE24Dataset, MExDataset,
     IMU_COLS, ECG_COLS, PAMAP2_IMU_COLS,
 )
-from src.preprocessing.signal_cleaning import (
-    bandpass_filter, highpass_filter, handle_missing
-)
+from src.preprocessing.signal_cleaning import bandpass_filter, highpass_filter, handle_missing
 from src.preprocessing.windowing import process_subject
 from src.preprocessing.feature_extraction import extract_all_features
 from src.preprocessing.hrv import compute_hrv_neurokit
@@ -64,8 +52,6 @@ def preprocess_pamap2(cfg: DictConfig, out_dir: str):
         sid = int(df["subject_id"].iloc[0])
         imu_raw = df[PAMAP2_IMU_COLS].values.astype(np.float32)
         hr_col  = df["heart_rate"].values.astype(np.float32)
-
-        # Use HR as a single-channel cardio signal (no ECG for PAMAP2)
         cardio_raw = hr_col[:, None]
         imu_filt   = bandpass_filter(imu_raw, fs=100.0, low=0.5, high=20.0)
 
@@ -87,7 +73,6 @@ def preprocess_ppg_4week(cfg: DictConfig, out_dir: str):
             if "ppg" not in df.columns:
                 continue
             ppg = df["ppg"].values.astype(np.float32)
-            # Dummy 9-ch IMU if not available (zeros won't contribute to gradients)
             imu = np.zeros((len(ppg), 9), dtype=np.float32)
             if "acc_x" in df.columns:
                 for i, col in enumerate(["acc_x", "acc_y", "acc_z"]):
@@ -114,11 +99,9 @@ def preprocess_ppg_4week(cfg: DictConfig, out_dir: str):
 def main(cfg: DictConfig):
     out_dir = cfg.paths.processed
     os.makedirs(out_dir, exist_ok=True)
-
     preprocess_mhealth(cfg, out_dir)
     preprocess_pamap2(cfg, out_dir)
     preprocess_ppg_4week(cfg, out_dir)
-
     print("Preprocessing complete.")
 
 

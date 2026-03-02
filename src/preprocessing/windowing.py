@@ -7,11 +7,6 @@ from src.preprocessing.signal_cleaning import handle_missing
 
 
 def create_windows(signal: np.ndarray, window_size: int = 1000, stride: int = 500):
-    """
-    Slide a fixed window over the signal.
-    signal: [T, C]
-    Returns: list of np.ndarray [window_size, C]
-    """
     windows = []
     T = len(signal)
     start = 0
@@ -22,13 +17,7 @@ def create_windows(signal: np.ndarray, window_size: int = 1000, stride: int = 50
 
 
 def per_subject_zscore(windows: list) -> list:
-    """
-    Compute mean and std over all windows for this subject (not globally),
-    apply z-score normalization.
-    windows: list of np.ndarray [W, C]
-    Returns: list of normalized np.ndarray + (mean, std) tuple
-    """
-    stacked = np.concatenate(windows, axis=0)  # [T_total, C]
+    stacked = np.concatenate(windows, axis=0)
     mu = stacked.mean(axis=0, keepdims=True)
     sigma = stacked.std(axis=0, keepdims=True) + 1e-8
     normalized = [(w - mu) / sigma for w in windows]
@@ -36,12 +25,6 @@ def per_subject_zscore(windows: list) -> list:
 
 
 def assess_quality(window: np.ndarray) -> float:
-    """
-    Heuristic quality score in [0, 1] based on:
-    - fraction of non-NaN values
-    - signal amplitude range (clipped saturation check)
-    - variance (detect flatlines)
-    """
     nan_frac = np.isnan(window).mean()
     if nan_frac > 0.3:
         return 0.0
@@ -49,12 +32,10 @@ def assess_quality(window: np.ndarray) -> float:
     completeness = 1.0 - nan_frac
     w = np.nan_to_num(window)
 
-    # Detect saturation: >5% of samples at extreme quantiles
     q1, q99 = np.quantile(w, 0.01), np.quantile(w, 0.99)
     sat_frac = ((w <= q1) | (w >= q99)).mean()
     sat_score = max(0.0, 1.0 - sat_frac * 5)
 
-    # Detect flatlines: variance too low
     var_score = min(1.0, float(np.std(w)) / 0.01)
 
     return float(completeness * 0.4 + sat_score * 0.3 + var_score * 0.3)
@@ -72,11 +53,6 @@ def process_subject(
     label_seq: Optional[np.ndarray] = None,
     timestamps: Optional[np.ndarray] = None,
 ):
-    """
-    Full windowing pipeline for one subject.
-    Saves each window as a .pt file under out_dir/subject_{id}/windows/.
-    Returns stats dict.
-    """
     windows_dir = os.path.join(out_dir, f"subject_{subject_id}", "windows")
     os.makedirs(windows_dir, exist_ok=True)
 
@@ -89,7 +65,6 @@ def process_subject(
     for t, (imu_w, card_w) in enumerate(zip(imu_wins_norm, card_wins_norm)):
         quality = assess_quality(imu_w)
 
-        # Handle NaN in cardio
         if np.isnan(card_w).any():
             card_w, discard = handle_missing(card_w)
             if discard:

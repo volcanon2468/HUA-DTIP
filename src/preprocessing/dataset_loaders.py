@@ -5,14 +5,11 @@ from torch.utils.data import Dataset
 
 
 MHEALTH_COLUMNS = [
-    # Chest sensors
     "chest_acc_x", "chest_acc_y", "chest_acc_z",
     "ecg_1", "ecg_2",
-    # Left-ankle sensors
     "ankle_acc_x", "ankle_acc_y", "ankle_acc_z",
     "ankle_gyro_x", "ankle_gyro_y", "ankle_gyro_z",
     "ankle_mag_x", "ankle_mag_y", "ankle_mag_z",
-    # Right-wrist sensors
     "wrist_acc_x", "wrist_acc_y", "wrist_acc_z",
     "wrist_gyro_x", "wrist_gyro_y", "wrist_gyro_z",
     "wrist_mag_x", "wrist_mag_y", "wrist_mag_z",
@@ -42,7 +39,7 @@ class MHEALTHDataset(Dataset):
             if not os.path.exists(path):
                 continue
             df = pd.read_csv(path, sep=r"\s+", header=None, names=MHEALTH_COLUMNS)
-            df = df[df["activity_label"] != 0]  # 0 = null/transient
+            df = df[df["activity_label"] != 0]
             df["subject_id"] = sid
             self.records.append(df)
 
@@ -59,7 +56,6 @@ class MHEALTHDataset(Dataset):
         return sum(len(df) for df in self.records)
 
     def __getitem__(self, idx):
-        # Flat index into concatenated rows
         for df in self.records:
             if idx < len(df):
                 row = df.iloc[idx]
@@ -70,10 +66,6 @@ class MHEALTHDataset(Dataset):
             idx -= len(df)
         raise IndexError("Index out of range.")
 
-
-# ---------------------------------------------------------------------------
-# PAMAP2 — C4
-# ---------------------------------------------------------------------------
 
 PAMAP2_IMU_COLS = [
     "hand_acc_16_x", "hand_acc_16_y", "hand_acc_16_z",
@@ -114,9 +106,7 @@ class PAMAP2Dataset(Dataset):
             if not os.path.exists(path):
                 continue
             df = pd.read_csv(path, sep=r"\s+", header=None, names=PAMAP2_COLUMNS)
-            df = df[df["activity_label"] != 0]  # 0 = transient
-
-            # Per-spec NaN handling
+            df = df[df["activity_label"] != 0]
             df[PAMAP2_HR_COL] = df[PAMAP2_HR_COL].fillna(method="ffill")
             df[PAMAP2_IMU_COLS] = df[PAMAP2_IMU_COLS].interpolate(method="linear", limit_direction="both")
             df["subject_id"] = sid
@@ -146,27 +136,17 @@ class PAMAP2Dataset(Dataset):
         raise IndexError("Index out of range.")
 
 
-# ---------------------------------------------------------------------------
-# 4-Week PPG — C5
-# ---------------------------------------------------------------------------
-
 class FourWeekPPGDataset(Dataset):
-    """
-    Expects per-subject CSVs with columns: timestamp, ppg, heart_rate, hrv_*, device_id
-    File naming convention: subject_{id}.csv
-    """
-
     def __init__(self, data_dir: str, subject_ids: list = None):
         self.data_dir = data_dir
         self.subject_ids = subject_ids or list(range(1, 50))
-        self.records = {}   # subject_id -> list of day DataFrames
+        self.records = {}
         self._load()
 
     def _load(self):
         for sid in self.subject_ids:
             path = os.path.join(self.data_dir, f"subject_{sid}.csv")
             if not os.path.exists(path):
-                # also try sensor_data.csv if it's a flat file
                 path = os.path.join(self.data_dir, "sensor_data.csv")
                 if not os.path.exists(path):
                     continue
@@ -177,8 +157,6 @@ class FourWeekPPGDataset(Dataset):
 
             df = df.sort_values("timestamp").reset_index(drop=True)
             df["subject_id"] = sid
-
-            # Split into per-day dataframes
             df["date"] = df["timestamp"].dt.date
             days = {}
             for d, grp in df.groupby("date"):
@@ -200,13 +178,7 @@ class FourWeekPPGDataset(Dataset):
         raise IndexError("Index out of range.")
 
 
-# ---------------------------------------------------------------------------
-# Stroke Rehab, CAPTURE-24, MEx — C6
-# ---------------------------------------------------------------------------
-
 class StrokeRehabDataset(Dataset):
-    """IMU recordings per patient (visit1, visit2), stored as patient_{id}_visit{n}.csv"""
-
     def __init__(self, data_dir: str):
         self.data_dir = data_dir
         self.records = []
@@ -235,8 +207,6 @@ class StrokeRehabDataset(Dataset):
 
 
 class CAPTURE24Dataset(Dataset):
-    """151 subjects with 24-hr continuous IMU, file per subject: subject_{id}.csv"""
-
     def __init__(self, data_dir: str, subject_ids: list = None):
         self.data_dir = data_dir
         self.subject_ids = subject_ids or list(range(1, 152))
@@ -267,8 +237,6 @@ class CAPTURE24Dataset(Dataset):
 
 
 class MExDataset(Dataset):
-    """30 subjects, exercise recordings: subject_{id}.csv"""
-
     def __init__(self, data_dir: str, subject_ids: list = None):
         self.data_dir = data_dir
         self.subject_ids = subject_ids or list(range(1, 31))

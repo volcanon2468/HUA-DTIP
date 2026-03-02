@@ -8,13 +8,6 @@ except ImportError:
 
 
 def compute_hrv_neurokit(ecg_or_ppg: np.ndarray, fs: float = 50.0) -> np.ndarray:
-    """
-    Computes 5 HRV features using NeuroKit2:
-    [SDNN, RMSSD, LF_power, HF_power, LF_HF_ratio]
-
-    Falls back to numpy-based estimation when NeuroKit2 is unavailable.
-    ecg_or_ppg: [T] or [T, C] — uses first channel
-    """
     sig = ecg_or_ppg[:, 0] if ecg_or_ppg.ndim > 1 else ecg_or_ppg
 
     if _NK_AVAILABLE:
@@ -30,20 +23,19 @@ def compute_hrv_neurokit(ecg_or_ppg: np.ndarray, fs: float = 50.0) -> np.ndarray
             lf_hf = lf / (hf + 1e-8)
             return np.array([sdnn, rmssd, lf, hf, lf_hf], dtype=np.float32)
         except Exception:
-            pass  # fall through to numpy fallback
+            pass
 
     return _hrv_numpy_fallback(sig, fs)
 
 
 def _hrv_numpy_fallback(sig: np.ndarray, fs: float) -> np.ndarray:
-    """Pure-numpy HRV approximation for environments without NeuroKit2."""
     dsig = np.diff(sig)
     peaks = np.where((dsig[:-1] > 0) & (dsig[1:] <= 0))[0]
 
     if len(peaks) < 3:
         return np.zeros(5, dtype=np.float32)
 
-    rr = np.diff(peaks) / fs  # seconds
+    rr = np.diff(peaks) / fs
 
     sdnn  = float(rr.std())
     rmssd = float(np.sqrt(np.mean(np.diff(rr) ** 2)))

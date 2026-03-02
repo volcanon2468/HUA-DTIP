@@ -37,7 +37,6 @@ def activity_recall(logits: torch.Tensor, labels: torch.Tensor) -> float:
 
 
 def coverage_probability(mu: np.ndarray, sigma: np.ndarray, true: np.ndarray, z: float = 1.96) -> float:
-    """Fraction of true values inside [mu - z*sigma, mu + z*sigma]."""
     lo = mu - z * sigma
     hi = mu + z * sigma
     return float(np.mean((true >= lo) & (true <= hi)))
