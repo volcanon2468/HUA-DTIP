@@ -3,11 +3,6 @@ import torch.nn as nn
 
 
 class FeatureEncoder(nn.Module):
-    """
-    3-layer MLP for hand-crafted 48-dim feature vectors.
-    Input:  h_feat_in [B, 48]
-    Output: h_feat [B, 64]
-    """
     def __init__(self, input_dim: int = 48, output_dim: int = 64, dropout: float = 0.3):
         super().__init__()
         self.net = nn.Sequential(

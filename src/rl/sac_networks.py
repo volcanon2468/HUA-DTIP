@@ -23,8 +23,8 @@ class TwinGymEnv(gym.Env):
             low=-5.0, high=5.0, shape=(self.latent_dim * 2,), dtype=np.float32
         )
         self.action_space = spaces.Box(
-            low=np.array([0.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float32),
-            high=np.array([1.0, 1.0, 1.0, 1.0, 1.0], dtype=np.float32),
+            low=np.zeros(6, dtype=np.float32),
+            high=np.ones(6, dtype=np.float32),
         )
 
         self.t = 0
@@ -41,8 +41,8 @@ class TwinGymEnv(gym.Env):
 
     def step(self, action: np.ndarray):
         action_t = torch.tensor(action, dtype=torch.float32, device=self.device).unsqueeze(0)
-        activity = torch.cat([action_t, (action_t[:, :1] * action_t[:, 1:2])], dim=-1)
-        rest = torch.stack([action_t[:, 2], action_t[:, 4], 1.0 - action_t[:, 0]], dim=-1)
+        activity = action_t[:, :6]
+        rest = torch.stack([action_t[:, 1], action_t[:, 4], 1.0 - action_t[:, 0]], dim=-1)
 
         ts = torch.tensor([0.0, 1.0], device=self.device)
         with torch.no_grad():
@@ -50,8 +50,9 @@ class TwinGymEnv(gym.Env):
             zs = self.sde(z0, activity, rest, ts)
             z_next = zs[-1]
 
-        self.z_mu  = z_next
-        self.z_std = self.z_std * 0.99 + 0.01 * torch.abs(z_next - self.z_mu)
+        old_mu = self.z_mu
+        self.z_mu = z_next
+        self.z_std = self.z_std * 0.99 + 0.01 * torch.abs(z_next - old_mu)
         self.t += 1
 
         obs = self._get_obs()
@@ -88,7 +89,7 @@ class TwinGymEnv(gym.Env):
 
 
 class SquashedGaussianActor(nn.Module):
-    def __init__(self, state_dim: int = 20, action_dim: int = 5, hidden: int = 256):
+    def __init__(self, state_dim: int = 20, action_dim: int = 6, hidden: int = 256):
         super().__init__()
         self.net = nn.Sequential(
             nn.Linear(state_dim, hidden), nn.ReLU(inplace=True),
@@ -122,7 +123,7 @@ class SquashedGaussianActor(nn.Module):
 
 
 class TwinCritic(nn.Module):
-    def __init__(self, state_dim: int = 20, action_dim: int = 5, hidden: int = 256):
+    def __init__(self, state_dim: int = 20, action_dim: int = 6, hidden: int = 256):
         super().__init__()
         self.q1 = nn.Sequential(
             nn.Linear(state_dim + action_dim, hidden), nn.ReLU(inplace=True),

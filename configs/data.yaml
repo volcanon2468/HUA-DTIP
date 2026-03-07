@@ -1,5 +1,3 @@
-# Dataset paths and preprocessing parameters
-
 paths:
   mhealth: data/raw/mhealth
   pamap2: data/raw/pamap2
@@ -10,16 +8,16 @@ paths:
   processed: data/processed
 
 window:
-  size: 1000          # samples (20s @ 50Hz)
-  stride: 500         # 50% overlap
-  sample_rate: 50     # Hz
+  size: 1000
+  stride: 500
+  sample_rate: 50
 
 normalization:
   method: per_subject_zscore
 
 missing_data:
-  interpolate_threshold: 0.10   # interpolate if <10% missing
-  discard_threshold: 0.30       # discard window if >30% missing
+  interpolate_threshold: 0.10
+  discard_threshold: 0.30
 
 hrv:
   features: [SDNN, RMSSD, LF, HF, LF_HF_ratio]

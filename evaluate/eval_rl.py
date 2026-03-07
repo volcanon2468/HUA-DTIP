@@ -67,14 +67,14 @@ def compare_with_baseline(actor, env, safety, reward_fn, n_eval: int = 50):
     results["sac_policy"] = evaluate_policy(actor, env, safety, reward_fn, n_eval, deterministic=True)
 
     class RandomActor:
-        def deterministic(self, s): return torch.rand(1, 5)
+        def deterministic(self, s): return torch.rand(1, 6)
         def parameters(self): return iter([torch.zeros(1)])
     results["random_policy"] = evaluate_policy(
         RandomActor(), env, SafetyGuard(), reward_fn, n_eval, deterministic=True
     )
 
     class FixedActor:
-        def deterministic(self, s): return torch.tensor([[0.5, 0.5, 0.5, 0.7, 0.8]])
+        def deterministic(self, s): return torch.tensor([[0.5, 0.5, 0.5, 0.5, 0.7, 0.8]])
         def parameters(self): return iter([torch.zeros(1)])
     results["fixed_moderate"] = evaluate_policy(
         FixedActor(), env, SafetyGuard(), reward_fn, n_eval, deterministic=True
@@ -98,7 +98,7 @@ def main():
             model.load_state_dict(torch.load(p, map_location=device))
 
     state_dim  = 20
-    action_dim = 5
+    action_dim = 6
     actor = SquashedGaussianActor(state_dim, action_dim).to(device)
     p = os.path.join(checkpoint_dir, "rl_actor.pt")
     if os.path.exists(p):

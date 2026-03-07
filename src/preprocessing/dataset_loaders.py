@@ -107,7 +107,7 @@ class PAMAP2Dataset(Dataset):
                 continue
             df = pd.read_csv(path, sep=r"\s+", header=None, names=PAMAP2_COLUMNS)
             df = df[df["activity_label"] != 0]
-            df[PAMAP2_HR_COL] = df[PAMAP2_HR_COL].fillna(method="ffill")
+            df[PAMAP2_HR_COL] = df[PAMAP2_HR_COL].ffill()
             df[PAMAP2_IMU_COLS] = df[PAMAP2_IMU_COLS].interpolate(method="linear", limit_direction="both")
             df["subject_id"] = sid
             self.records.append(df)

@@ -20,7 +20,7 @@ def run_rl_eval(checkpoint_dir: str, device) -> dict:
         if os.path.exists(p):
             model.load_state_dict(torch.load(p, map_location=device))
 
-    actor = SquashedGaussianActor(20, 5).to(device)
+    actor = SquashedGaussianActor(20, 6).to(device)
     p = os.path.join(checkpoint_dir, "rl_actor.pt")
     if os.path.exists(p):
         actor.load_state_dict(torch.load(p, map_location=device))

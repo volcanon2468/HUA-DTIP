@@ -55,8 +55,9 @@ class WhatIfEngine:
     def compare_scenarios(self, z0: torch.Tensor, scenarios: List[dict], n_days: int = 28) -> List[ScenarioResult]:
         results = []
         for scenario_kwargs in scenarios:
-            name = scenario_kwargs.pop("name", None)
-            r = self.query(z0, scenario_kwargs, n_days)
+            kw = dict(scenario_kwargs)
+            name = kw.pop("name", None)
+            r = self.query(z0, kw, n_days)
             if name:
                 r.name = name
             results.append(r)

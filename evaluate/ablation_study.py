@@ -48,7 +48,7 @@ def run_ablation(checkpoint_dir: str, device, ablation_name: str, config: dict) 
     if "beta" in overrides:
         vae.beta = overrides["beta"]
 
-    actor = SquashedGaussianActor(20, 5).to(device)
+    actor = SquashedGaussianActor(20, 6).to(device)
     p = os.path.join(checkpoint_dir, "rl_actor.pt")
     if os.path.exists(p):
         actor.load_state_dict(torch.load(p, map_location=device))
