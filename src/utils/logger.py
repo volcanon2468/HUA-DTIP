@@ -9,13 +9,18 @@ _run = None
 
 def init_run(cfg: DictConfig, name: str):
     global _run
-    _run = wandb.init(
-        project=cfg.wandb.project,
-        entity=cfg.wandb.entity or None,
-        name=name,
-        config=OmegaConf.to_container(cfg, resolve=True),
-        reinit=True,
-    )
+    os.environ.setdefault("WANDB_MODE", "offline")
+    try:
+        _run = wandb.init(
+            project=cfg.wandb.project,
+            entity=cfg.wandb.get("entity", None) or None,
+            name=name,
+            config=OmegaConf.to_container(cfg, resolve=True),
+            reinit=True,
+            mode=os.environ.get("WANDB_MODE", "offline"),
+        )
+    except Exception:
+        _run = None
     return _run
 
 

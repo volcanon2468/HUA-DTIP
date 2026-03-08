@@ -17,7 +17,7 @@ from src.utils.logger import init_run, log_metrics, log_model, finish_run
 
 
 class ReplayBuffer:
-    def __init__(self, capacity: int = 100000, state_dim: int = 20, action_dim: int = 5):
+    def __init__(self, capacity: int = 100000, state_dim: int = 20, action_dim: int = 6):
         self.capacity = capacity
         self.states  = np.zeros((capacity, state_dim), dtype=np.float32)
         self.actions = np.zeros((capacity, action_dim), dtype=np.float32)

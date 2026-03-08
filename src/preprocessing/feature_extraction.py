@@ -18,10 +18,12 @@ def extract_imu_features(imu: np.ndarray) -> np.ndarray:
     step_count = cadence * (len(acc) / 50.0) / 2
 
     lag = min(50, len(acc_mag) - 1)
-    step_regularity = float(np.corrcoef(acc_mag[:-lag], acc_mag[lag:])[0, 1])
+    corr = np.corrcoef(acc_mag[:-lag], acc_mag[lag:])
+    step_regularity = float(np.nan_to_num(corr[0, 1]))
 
     half = len(acc_mag) // 2
-    gait_symmetry = float(np.corrcoef(acc_mag[:half], acc_mag[half:half * 2])[0, 1])
+    corr2 = np.corrcoef(acc_mag[:half], acc_mag[half:half * 2])
+    gait_symmetry = float(np.nan_to_num(corr2[0, 1]))
 
     stride_length = float(acc_mag.max() - acc_mag.min())
 
@@ -37,12 +39,11 @@ def extract_imu_features(imu: np.ndarray) -> np.ndarray:
     gyro_mean = gyro.mean(axis=0)
     gyro_std = gyro.std(axis=0)
 
-    features = np.array([
+    features = np.nan_to_num(np.array([
         cadence, step_count, step_regularity, sma, mad,
         energy, stride_length, gait_symmetry,
         *acc_mean, *acc_std, *gyro_mean, *gyro_std,
-        transition_count, postural_score,
-    ], dtype=np.float32)
+    ], dtype=np.float32))
 
     assert len(features) == 20
     return features

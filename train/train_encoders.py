@@ -36,7 +36,7 @@ class WindowDataset(Dataset):
         return len(self.paths)
 
     def __getitem__(self, idx):
-        return torch.load(self.paths[idx], map_location="cpu")
+        return torch.load(self.paths[idx], map_location="cpu", weights_only=False)
 
 
 def nt_xent_loss(z1: torch.Tensor, z2: torch.Tensor, temperature: float = 0.07) -> torch.Tensor:
@@ -99,28 +99,38 @@ def pretrain_imu(encoder, proj_head, loader, cfg, device):
 
 
 def finetune_imu(encoder, loader, cfg, device, n_classes):
-    encoder.build_classifier(n_classes)
+    all_labels_raw = []
+    for batch in loader:
+        labs = batch["label"]
+        all_labels_raw.extend(labs[labs >= 0].tolist())
+    unique_labels = sorted(set(all_labels_raw))
+    label_map = {old: new for new, old in enumerate(unique_labels)}
+    actual_n_classes = len(unique_labels)
+    print(f"  Found {actual_n_classes} unique classes: {unique_labels[:20]}")
+
+    encoder.build_classifier(actual_n_classes)
     encoder.to(device).train()
     opt = torch.optim.Adam(encoder.parameters(), lr=cfg.training.encoders.lr * 0.1)
     ce  = nn.CrossEntropyLoss()
     best_f1 = 0.0
 
     for epoch in range(30):
-        all_logits, all_labels = [], []
+        all_logits, all_mapped = [], []
         for batch in loader:
             imu = batch["imu"].to(device)
-            labels = batch["label"].to(device)
+            labels = batch["label"]
             valid = labels >= 0
             if not valid.any():
                 continue
+            mapped = torch.tensor([label_map.get(int(l), 0) for l in labels[valid]], device=device)
             logits = encoder.classify(imu[valid])
-            loss = ce(logits, labels[valid])
+            loss = ce(logits, mapped)
             opt.zero_grad(); loss.backward(); opt.step()
             all_logits.append(logits.detach().cpu())
-            all_labels.append(labels[valid].cpu())
+            all_mapped.append(mapped.cpu())
 
         if all_logits:
-            f1 = activity_f1(torch.cat(all_logits), torch.cat(all_labels))
+            f1 = activity_f1(torch.cat(all_logits), torch.cat(all_mapped))
             log_metrics({"imu_finetune/f1": f1}, step=epoch)
             best_f1 = max(best_f1, f1)
             if epoch % 10 == 0:
