@@ -5,7 +5,7 @@ from collections import deque
 
 
 class NoveltyAutoencoder(nn.Module):
-    def __init__(self, input_dim: int = 48, latent_dim: int = 16, hidden: int = 64):
+    def __init__(self, input_dim: int = 48, latent_dim: int = 32, hidden: int = 64):
         super().__init__()
         self.encoder = nn.Sequential(
             nn.Linear(input_dim, hidden), nn.ReLU(inplace=True),
@@ -23,7 +23,7 @@ class NoveltyAutoencoder(nn.Module):
 
 
 class AutoencoderNoveltyDetector:
-    def __init__(self, input_dim: int = 48, latent_dim: int = 16,
+    def __init__(self, input_dim: int = 48, latent_dim: int = 32,
                  percentile_threshold: float = 95.0, device: str = "cpu"):
         self.device = torch.device(device)
         self.model = NoveltyAutoencoder(input_dim, latent_dim).to(self.device)

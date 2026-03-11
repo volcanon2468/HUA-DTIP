@@ -42,11 +42,14 @@ class HourlyBufferDataset(Dataset):
         return len(self.sequences)
 
     def __getitem__(self, idx):
-        windows = [torch.load(p, map_location="cpu") for p in self.sequences[idx]]
+        windows = [torch.load(p, map_location="cpu", weights_only=False) for p in self.sequences[idx]]
+        for w in windows:
+            if "cardio" in w and w["cardio"].shape[-1] == 1:
+                w["cardio"] = torch.nn.functional.pad(w["cardio"], (0, 1))
         imu_seq     = torch.stack([w["imu"] for w in windows])
         cardio_seq  = torch.stack([w["cardio"] for w in windows])
         feat_seq    = torch.stack([w["features"] for w in windows])
-        hr_seq      = torch.stack([w["features"][:, 20:21] for w in windows]).squeeze(-1)
+        hr_seq      = torch.stack([w["features"][20:21] for w in windows]).squeeze(-1)
         hrv_seq     = torch.stack([w["hrv"] for w in windows])
         return imu_seq, cardio_seq, feat_seq, hr_seq, hrv_seq
 
@@ -97,9 +100,11 @@ def train_micro(micro_model, imu_enc, cardio_enc, feat_enc, fusion_mod,
         total_loss = 0.0; n = 0
         for imu_seq, cardio_seq, feat_seq, hr_seq, hrv_seq in loader:
             B, T, *_ = imu_seq.shape
-            imu_seq = imu_seq.to(device); cardio_seq = cardio_seq.to(device)
-            feat_seq = feat_seq.to(device); hr_seq = hr_seq.to(device)
-            hrv_seq = hrv_seq.to(device)
+            imu_seq = torch.nan_to_num(imu_seq.to(device), nan=0.0)
+            cardio_seq = torch.nan_to_num(cardio_seq.to(device), nan=0.0)
+            feat_seq = torch.nan_to_num(feat_seq.to(device), nan=0.0)
+            hr_seq = torch.nan_to_num(hr_seq.to(device), nan=0.0)
+            hrv_seq = torch.nan_to_num(hrv_seq.to(device), nan=0.0)
 
             with torch.no_grad():
                 imu_flat   = imu_seq.view(B * T, *imu_seq.shape[2:])
@@ -142,7 +147,8 @@ def train_meso(meso_model, loader, cfg, device):
     for epoch in range(cfg.training.temporal.epochs):
         total_loss = 0.0; n = 0
         for x, y in loader:
-            x = x.to(device); y = y.to(device)
+            x = torch.nan_to_num(x.to(device), nan=0.0)
+            y = torch.nan_to_num(y.to(device), nan=0.0)
             next_day_pred, _ = meso_model.predict(x)
             loss = mse(next_day_pred, y)
             opt.zero_grad(); loss.backward(); opt.step()
@@ -166,7 +172,7 @@ def train_macro(macro_model, meso_model, processed_dir, cfg, device):
     mse = nn.MSELoss(); ce = nn.CrossEntropyLoss()
 
     synthetic = generate_synthetic_trajectories(meso_model, n_trajectories=500,
-                                                 n_months=6, device=str(device))
+                                                 n_months=7, device=str(device))
     from torch.utils.data import TensorDataset
     traj_tensor = torch.stack(synthetic)
     traj_in  = traj_tensor[:, :-1]
@@ -177,7 +183,8 @@ def train_macro(macro_model, meso_model, processed_dir, cfg, device):
     for epoch in range(60):
         total_loss = 0.0; n = 0
         for x, y_cap in loader:
-            x = x.to(device); y_cap = y_cap.to(device)
+            x = torch.nan_to_num(x.to(device), nan=0.0)
+            y_cap = torch.nan_to_num(y_cap.to(device), nan=0.0)
             cap_pred, _ = macro_model.predict(x)
             loss = mse(cap_pred, y_cap)
             opt.zero_grad(); loss.backward(); opt.step()
@@ -206,7 +213,7 @@ def main(cfg: DictConfig):
                         ("encoder_feature", feat_enc), ("encoder_fusion", fusion_mod)]:
         ckpt_path = os.path.join(cfg.checkpoints.dir, f"{name}.pt")
         if os.path.exists(ckpt_path):
-            model.load_state_dict(torch.load(ckpt_path, map_location=device))
+            model.load_state_dict(torch.load(ckpt_path, map_location=device, weights_only=True), strict=False)
 
     micro_model = MicroScaleModel().to(device)
     meso_model  = MesoScaleModel().to(device)
@@ -220,8 +227,10 @@ def main(cfg: DictConfig):
     log_model(micro_model, "temporal_micro", cfg)
 
     print("=== Training Meso-Scale ===")
-    daily_ds = DailySequenceDataset(processed_dir, seq_len=7)
-    daily_loader = DataLoader(daily_ds, batch_size=16, shuffle=True, num_workers=2, drop_last=True)
+    # seq_len=1 since the sample datasets (MHEALTH, etc) only have a few days of data
+    daily_ds = DailySequenceDataset(processed_dir, seq_len=1)
+    # allow single item batches if ds is very small
+    daily_loader = DataLoader(daily_ds, batch_size=min(16, max(len(daily_ds), 1)), shuffle=True, num_workers=2, drop_last=False)
     train_meso(meso_model, daily_loader, cfg, device)
     log_model(meso_model, "temporal_meso", cfg)
 

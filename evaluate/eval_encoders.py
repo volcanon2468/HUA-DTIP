@@ -15,12 +15,22 @@ def loso_imu_eval(processed_dir, checkpoint_dir, n_subjects=10, n_classes=12, de
     all_ids = list(range(1, n_subjects + 1))
 
     for test_id in all_ids:
-        encoder = SWCTNet().to(device)
-        encoder.build_classifier(n_classes)
+        encoder = SWCTNet()
 
         ckpt_path = os.path.join(checkpoint_dir, "encoder_imu.pt")
         if os.path.exists(ckpt_path):
-            encoder.load_state_dict(torch.load(ckpt_path, map_location=device))
+            ckpt = torch.load(ckpt_path, map_location=device)
+            # Detect the number of classes from the checkpoint's classifier
+            ckpt_n_classes = ckpt.get("classifier.weight", torch.empty(0)).shape[0]
+            if ckpt_n_classes > 0:
+                encoder.build_classifier(ckpt_n_classes)
+            else:
+                encoder.build_classifier(n_classes)
+            encoder.to(device)
+            encoder.load_state_dict(ckpt)
+        else:
+            encoder.build_classifier(n_classes)
+            encoder.to(device)
 
         encoder.eval()
         test_loader = DataLoader(WindowDataset(processed_dir, [test_id]), batch_size=64, shuffle=False)

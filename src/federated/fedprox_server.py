@@ -26,10 +26,13 @@ class FedProxServer:
 
         new_state = OrderedDict()
         for key in self.global_state.keys():
-            new_state[key] = sum(
-                client_weights[i] * client_states[i][key].float()
-                for i in range(n)
-            )
+            if key in client_states[0]:
+                new_state[key] = sum(
+                    client_weights[i] * client_states[i][key].float()
+                    for i in range(n)
+                )
+            else:
+                new_state[key] = self.global_state[key]
 
         self.global_state = new_state
         self.global_model.load_state_dict(new_state)

@@ -59,7 +59,7 @@ def train_sac(cfg: DictConfig, device: torch.device):
     for name, model in [("twin_vae", vae), ("twin_sde", sde)]:
         p = os.path.join(ckpt_dir, f"{name}.pt")
         if os.path.exists(p):
-            model.load_state_dict(torch.load(p, map_location=device))
+            model.load_state_dict(torch.load(p, map_location=device, weights_only=True), strict=False)
     vae.eval(); sde.eval()
 
     env = TwinGymEnv(vae, sde, episode_len=cfg.training.rl.episode_length, device=str(device))
@@ -123,6 +123,9 @@ def train_sac(cfg: DictConfig, device: torch.device):
                         cfg.training.rl.batch_size, cfg.training.rl.gamma,
                         cfg.training.rl.tau, device)
 
+            if done:
+                break
+
         ep_rewards.append(ep_reward)
         avg_reward = np.mean(ep_rewards)
         log_metrics({
@@ -139,7 +142,7 @@ def train_sac(cfg: DictConfig, device: torch.device):
 
         if episode % 100 == 0:
             print(f"  Episode {episode:5d}  reward={ep_reward:.3f}  "
-                  f"avg100={avg_reward:.3f}  α={log_alpha.exp().item():.3f}  "
+                  f"avg100={avg_reward:.3f}  alpha={log_alpha.exp().item():.3f}  "
                   f"violations={safety.episode_violations}")
 
     return actor, critic

@@ -47,12 +47,12 @@ class FedPerClient:
         for epoch in range(self.local_epochs):
             for batch in dataloader:
                 if isinstance(batch, dict):
-                    x = batch["features"].to(device)
-                    y = batch.get("hrv", batch.get("label", torch.zeros(x.shape[0]))).to(device)
+                    x = torch.nan_to_num(batch["features"].to(device), nan=0.0)
+                    y = torch.nan_to_num(batch.get("hrv", batch.get("label", torch.zeros(x.shape[0]))).to(device), nan=0.0)
                 elif isinstance(batch, (list, tuple)):
-                    x, y = batch[0].to(device), batch[1].to(device)
+                    x, y = torch.nan_to_num(batch[0].to(device), nan=0.0), torch.nan_to_num(batch[1].to(device), nan=0.0)
                 else:
-                    x = batch.to(device)
+                    x = torch.nan_to_num(batch.to(device), nan=0.0)
                     y = torch.zeros(x.shape[0], device=device)
 
                 output = self.model(x)
@@ -93,10 +93,10 @@ class FedPerClient:
         for epoch in range(n_epochs):
             for batch in dataloader:
                 if isinstance(batch, dict):
-                    x = batch["features"].to(device)
-                    y = batch.get("hrv", torch.zeros(x.shape[0])).to(device)
+                    x = torch.nan_to_num(batch["features"].to(device), nan=0.0)
+                    y = torch.nan_to_num(batch.get("hrv", torch.zeros(x.shape[0])).to(device), nan=0.0)
                 else:
-                    x, y = batch[0].to(device), batch[1].to(device)
+                    x, y = torch.nan_to_num(batch[0].to(device), nan=0.0), torch.nan_to_num(batch[1].to(device), nan=0.0)
                 output = self.model(x)
                 if isinstance(output, tuple):
                     output = output[0]

@@ -36,7 +36,11 @@ class WindowDataset(Dataset):
         return len(self.paths)
 
     def __getitem__(self, idx):
-        return torch.load(self.paths[idx], map_location="cpu", weights_only=False)
+        data = torch.load(self.paths[idx], map_location="cpu", weights_only=False)
+        cardio = data["cardio"]
+        if cardio.shape[-1] == 1:
+            data["cardio"] = F.pad(cardio, (0, 1))
+        return data
 
 
 def nt_xent_loss(z1: torch.Tensor, z2: torch.Tensor, temperature: float = 0.07) -> torch.Tensor:
@@ -179,9 +183,9 @@ def train_fusion(imu_enc, cardio_enc, feat_enc, fusion, loader, cfg, device):
     for epoch in range(50):
         total_loss = 0.0; n = 0
         for batch in loader:
-            imu    = batch["imu"].to(device)
-            cardio = batch["cardio"].to(device)
-            feats  = batch["features"].to(device)
+            imu    = torch.nan_to_num(batch["imu"].to(device), nan=0.0)
+            cardio = torch.nan_to_num(batch["cardio"].to(device), nan=0.0)
+            feats  = torch.nan_to_num(batch["features"].to(device), nan=0.0)
             with torch.no_grad():
                 h_imu    = imu_enc(imu)
                 h_cardio = cardio_enc(cardio)
@@ -220,17 +224,13 @@ def main(cfg: DictConfig):
     feat_enc   = FeatureEncoder().to(device)
     fusion_mod = CrossModalFusion().to(device)
 
-    print("=== Phase 1: IMU Contrastive Pre-training ===")
+    print("=== Phase 1: IMU Pre-training (SimCLR) ===")
     pretrain_imu(imu_enc, proj_head, loader, cfg, device)
     log_model(imu_enc, "encoder_imu_pretrained", cfg)
 
     print("=== Phase 2: IMU Fine-tuning ===")
-    mhealth_ids = list(range(1, 9))
-    ft_loader = DataLoader(WindowDataset(processed_dir, mhealth_ids),
-                           batch_size=cfg.encoders.batch_size, shuffle=True, drop_last=True)
-    f1 = finetune_imu(imu_enc, ft_loader, cfg, device,
-                      n_classes=data_cfg.mhealth.n_activity_classes)
-    print(f"  Best F1: {f1:.4f}")
+    n_classes = data_cfg.mhealth.n_activity_classes
+    finetune_imu(imu_enc, loader, cfg, device, n_classes)
     log_model(imu_enc, "encoder_imu", cfg)
 
     print("=== Phase 3: Cardio Encoder Training ===")

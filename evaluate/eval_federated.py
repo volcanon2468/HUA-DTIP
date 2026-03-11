@@ -60,7 +60,7 @@ def eval_personalization(processed_dir: str, checkpoint_dir: str,
             "improvement_pct": (global_mae - personal_mae) / (global_mae + 1e-8) * 100,
         })
         print(f"  Subject {sid:3d}  global={global_mae:.4f}  personal={personal_mae:.4f}  "
-              f"Δ={results[-1]['improvement_pct']:.1f}%")
+              f"Delta={results[-1]['improvement_pct']:.1f}%")
 
     return results
 
@@ -109,8 +109,8 @@ def _evaluate_model(model, loader, device) -> float:
     all_pred, all_true = [], []
     with torch.no_grad():
         for batch in loader:
-            x = batch["features"].to(device)
-            y = batch["hrv"].to(device)
+            x = torch.nan_to_num(batch["features"].to(device))
+            y = torch.nan_to_num(batch["hrv"].to(device))
             pred = model(x)
             all_pred.append(pred.cpu())
             all_true.append(y.cpu())

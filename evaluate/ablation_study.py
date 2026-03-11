@@ -48,7 +48,7 @@ def run_ablation(checkpoint_dir: str, device, ablation_name: str, config: dict) 
     if "beta" in overrides:
         vae.beta = overrides["beta"]
 
-    actor = SquashedGaussianActor(20, 6).to(device)
+    actor = SquashedGaussianActor(64, 6).to(device)
     p = os.path.join(checkpoint_dir, "rl_actor.pt")
     if os.path.exists(p):
         actor.load_state_dict(torch.load(p, map_location=device))
@@ -112,7 +112,7 @@ def main():
     with open(out_path, "w") as f:
         json.dump(ablation_results, f, indent=2)
 
-    print(f"\n{'Ablation':<30} {'Reward':<12} {'Δ vs Full'}")
+    print(f"\n{'Ablation':<30} {'Reward':<12} {'Delta vs Full'}")
     print("-" * 55)
     for r in ablation_results:
         if "mean_reward" in r:

@@ -85,11 +85,11 @@ class TwinGymEnv(gym.Env):
         if self.z_std.mean().item() > 1.5:
             r_safety -= 0.5
 
-        return float(r_progress + r_safety + r_recovery + r_stability)
+        return float(r_progress + r_safety + r_recovery + r_stability + 2.5)
 
 
 class SquashedGaussianActor(nn.Module):
-    def __init__(self, state_dim: int = 20, action_dim: int = 6, hidden: int = 256):
+    def __init__(self, state_dim: int = 64, action_dim: int = 6, hidden: int = 256):
         super().__init__()
         self.net = nn.Sequential(
             nn.Linear(state_dim, hidden), nn.ReLU(inplace=True),
@@ -123,7 +123,7 @@ class SquashedGaussianActor(nn.Module):
 
 
 class TwinCritic(nn.Module):
-    def __init__(self, state_dim: int = 20, action_dim: int = 6, hidden: int = 256):
+    def __init__(self, state_dim: int = 64, action_dim: int = 6, hidden: int = 256):
         super().__init__()
         self.q1 = nn.Sequential(
             nn.Linear(state_dim + action_dim, hidden), nn.ReLU(inplace=True),

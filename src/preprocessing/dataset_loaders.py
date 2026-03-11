@@ -35,7 +35,7 @@ class MHEALTHDataset(Dataset):
 
     def _load(self):
         for sid in self.subject_ids:
-            path = os.path.join(self.data_dir, f"mHealth_subject{sid}.log")
+            path = os.path.join(self.data_dir, "MHEALTHDATASET", f"mHealth_subject{sid}.log")
             if not os.path.exists(path):
                 continue
             df = pd.read_csv(path, sep=r"\s+", header=None, names=MHEALTH_COLUMNS)
@@ -102,7 +102,7 @@ class PAMAP2Dataset(Dataset):
 
     def _load(self):
         for sid in self.subject_ids:
-            path = os.path.join(self.data_dir, f"subject{sid}.dat")
+            path = os.path.join(self.data_dir, "PAMAP2_Dataset", "Protocol", f"subject{sid}.dat")
             if not os.path.exists(path):
                 continue
             df = pd.read_csv(path, sep=r"\s+", header=None, names=PAMAP2_COLUMNS)

@@ -71,7 +71,7 @@ class SDEFunc(nn.Module):
 
 
 class LatentNeuralSDE(nn.Module):
-    def __init__(self, latent_dim: int = 10, activity_input_dim: int = 6,
+    def __init__(self, latent_dim: int = 32, activity_input_dim: int = 6,
                  rest_input_dim: int = 3, drift_hidden: int = 128, diffusion_hidden: int = 32):
         super().__init__()
         self.latent_dim = latent_dim

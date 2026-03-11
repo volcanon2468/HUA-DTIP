@@ -39,7 +39,7 @@ class ZTemporalDataset(Dataset):
 
 
 class DaySequenceDataset(Dataset):
-    def __init__(self, processed_dir: str, seq_len: int = 7):
+    def __init__(self, processed_dir: str, seq_len: int = 1):
         self.sequences = []
         all_paths = {}
         for p in sorted(glob.glob(os.path.join(processed_dir, "subject_*", "daily_summaries", "day_*.pt"))):
@@ -51,7 +51,7 @@ class DaySequenceDataset(Dataset):
             all_paths.setdefault(sid, []).append(p)
 
         for sid, paths in all_paths.items():
-            for i in range(len(paths) - seq_len - 1):
+            for i in range(len(paths) - seq_len):
                 self.sequences.append(paths[i: i + seq_len + 1])
 
     def __len__(self):
@@ -82,7 +82,7 @@ def _load_encoders_temporal(cfg, device):
     for name, model in name_map.items():
         p = os.path.join(cfg.checkpoints.dir, f"{name}.pt")
         if os.path.exists(p):
-            model.load_state_dict(torch.load(p, map_location=device))
+            model.load_state_dict(torch.load(p, map_location=device, weights_only=True), strict=False)
         model.eval()
         for param in model.parameters():
             param.requires_grad = False
@@ -90,7 +90,8 @@ def _load_encoders_temporal(cfg, device):
     return enc_imu, enc_cardio, enc_feat, enc_fusion, micro, meso, macro, hier
 
 
-def train_vae(vae: BayesianVAE, loader: DataLoader, cfg: DictConfig, device: torch.device):
+def train_vae(vae: BayesianVAE, loader: DataLoader, cfg: DictConfig, device: torch.device,
+              feat_mean=None, feat_std=None):
     vae.train()
     opt = torch.optim.Adam(vae.parameters(), lr=cfg.training.twin.lr,
                            weight_decay=cfg.training.twin.weight_decay)
@@ -100,9 +101,11 @@ def train_vae(vae: BayesianVAE, loader: DataLoader, cfg: DictConfig, device: tor
     for epoch in range(cfg.training.twin.epochs):
         total_loss = 0.0; n = 0
         for features, hrv, hr in loader:
-            features = features.to(device)
-            hr       = hr.to(device).squeeze(-1)
-            hrv      = hrv.to(device)
+            features = torch.nan_to_num(features.to(device), nan=0.0)
+            if feat_mean is not None:
+                features = (features - feat_mean.to(device)) / feat_std.to(device)
+            hr       = torch.nan_to_num(hr.to(device).squeeze(-1), nan=0.0)
+            hrv      = torch.nan_to_num(hrv.to(device), nan=0.0)
 
             z_input = torch.cat([features, torch.zeros(features.shape[0], 512 - 48, device=device)], dim=-1)
             loss, parts = vae.loss(z_input, hr, hrv)
@@ -137,8 +140,8 @@ def train_sde(sde: LatentNeuralSDE, vae: BayesianVAE, day_loader: DataLoader,
     for epoch in range(cfg.training.twin.sde.epochs):
         total_loss = 0.0; n = 0
         for x_seq, y_next in day_loader:
-            x_seq  = x_seq.to(device)
-            y_next = y_next.to(device)
+            x_seq  = torch.nan_to_num(x_seq.to(device), nan=0.0)
+            y_next = torch.nan_to_num(y_next.to(device), nan=0.0)
 
             with torch.no_grad():
                 z_input = torch.cat([x_seq[:, -1, :48],
@@ -177,7 +180,8 @@ def train_sde(sde: LatentNeuralSDE, vae: BayesianVAE, day_loader: DataLoader,
 
 def joint_finetune(vae: BayesianVAE, sde: LatentNeuralSDE,
                    loader: DataLoader, day_loader: DataLoader,
-                   cfg: DictConfig, device: torch.device):
+                   cfg: DictConfig, device: torch.device,
+                   feat_mean=None, feat_std=None):
     for p in list(vae.parameters()) + list(sde.parameters()):
         p.requires_grad = True
 
@@ -190,11 +194,13 @@ def joint_finetune(vae: BayesianVAE, sde: LatentNeuralSDE,
     for epoch in range(20):
         total_loss = 0.0; n = 0
         for (features, hrv, hr), (x_seq, y_next) in zip(loader, day_loader):
-            features = features.to(device)
-            hr = hr.squeeze(-1).to(device)
-            hrv = hrv.to(device)
-            x_seq = x_seq.to(device)
-            y_next = y_next.to(device)
+            features = torch.nan_to_num(features.to(device), nan=0.0)
+            if feat_mean is not None:
+                features = (features - feat_mean.to(device)) / feat_std.to(device)
+            hr       = torch.nan_to_num(hr.squeeze(-1).to(device), nan=0.0)
+            hrv      = torch.nan_to_num(hrv.to(device), nan=0.0)
+            x_seq    = torch.nan_to_num(x_seq.to(device), nan=0.0)
+            y_next   = torch.nan_to_num(y_next.to(device), nan=0.0)
 
             z_input = torch.cat([features, torch.zeros(features.shape[0], 512 - 48, device=device)], dim=-1)
             vae_loss, _ = vae.loss(z_input, hr, hrv)
@@ -231,14 +237,26 @@ def main(cfg: DictConfig):
     feat_ds  = ZTemporalDataset(processed_dir)
     feat_loader = DataLoader(feat_ds, batch_size=cfg.training.twin.batch_size,
                              shuffle=True, num_workers=2, drop_last=True)
-    day_ds   = DaySequenceDataset(processed_dir)
-    day_loader = DataLoader(day_ds, batch_size=16, shuffle=True, num_workers=2, drop_last=True)
+    day_ds = DaySequenceDataset(processed_dir, seq_len=1)
+    day_loader = DataLoader(day_ds, batch_size=min(16, max(len(day_ds), 1)), shuffle=True, num_workers=2, drop_last=False)
+
+    # Precompute global feature normalization stats
+    print("Computing feature normalization statistics...")
+    all_feats = []
+    for features, hrv, hr in feat_loader:
+        all_feats.append(torch.nan_to_num(features, nan=0.0))
+    all_feats_cat = torch.cat(all_feats, dim=0)
+    feat_mean = all_feats_cat.mean(dim=0, keepdim=True)
+    feat_std  = all_feats_cat.std(dim=0, keepdim=True).clamp(min=1e-6)
+    torch.save({"mean": feat_mean, "std": feat_std},
+               os.path.join('checkpoints', 'feature_norm_stats.pt'))
+    print(f"  Feature stats saved. Mean range: [{feat_mean.min():.2f}, {feat_mean.max():.2f}]")
 
     vae = BayesianVAE().to(device)
     sde = LatentNeuralSDE().to(device)
 
-    print("=== Step 1: Train β-VAE ===")
-    train_vae(vae, feat_loader, cfg, device)
+    print("=== Training Beta-VAE ===")
+    train_vae(vae, feat_loader, cfg, device, feat_mean=feat_mean, feat_std=feat_std)
     log_model(vae, "twin_vae", cfg)
 
     print("=== Step 2: Train Latent Neural SDE ===")
@@ -246,7 +264,8 @@ def main(cfg: DictConfig):
     log_model(sde, "twin_sde", cfg)
 
     print("=== Step 3: Joint Fine-Tuning ===")
-    joint_finetune(vae, sde, feat_loader, day_loader, cfg, device)
+    joint_finetune(vae, sde, feat_loader, day_loader, cfg, device,
+                   feat_mean=feat_mean, feat_std=feat_std)
     log_model(vae, "twin_vae", cfg)
     log_model(sde, "twin_sde", cfg)
 

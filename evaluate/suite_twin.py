@@ -21,11 +21,19 @@ def run_twin_eval(processed_dir: str, checkpoint_dir: str, device) -> dict:
         if os.path.exists(p):
             model.load_state_dict(torch.load(p, map_location=device))
 
+    # Load feature normalization stats
+    feat_mean, feat_std = None, None
+    norm_path = os.path.join(checkpoint_dir, "feature_norm_stats.pt")
+    if os.path.exists(norm_path):
+        stats = torch.load(norm_path, map_location=device)
+        feat_mean = stats["mean"]
+        feat_std = stats["std"]
+
     feat_loader = DataLoader(ZTemporalDataset(processed_dir), batch_size=64, shuffle=False)
     day_loader  = DataLoader(DaySequenceDataset(processed_dir), batch_size=16, shuffle=False)
 
     print("=== Twin Suite ===")
-    recon_mse = eval_reconstruction(vae, feat_loader, device)
+    recon_mse = eval_reconstruction(vae, feat_loader, device, feat_mean=feat_mean, feat_std=feat_std)
     traj      = eval_trajectory(vae, sde, day_loader, device)
 
     vae_params = sum(p.numel() for p in vae.parameters())
@@ -40,7 +48,7 @@ def run_twin_eval(processed_dir: str, checkpoint_dir: str, device) -> dict:
         "calibration_target": 0.90,
         "vae_params": vae_params,
         "sde_params": sde_params,
-        "latent_dim": 10,
+        "latent_dim": vae.latent_dim,
     }
 
 
