@@ -2,54 +2,36 @@ import torch
 import torch.nn as nn
 import torchsde
 
-
 class ActivityEncoder(nn.Module):
-    def __init__(self, input_dim: int = 6, hidden: int = 32, output_dim: int = 64):
+
+    def __init__(self, input_dim: int=6, hidden: int=32, output_dim: int=64):
         super().__init__()
-        self.net = nn.Sequential(
-            nn.Linear(input_dim, hidden), nn.ReLU(inplace=True),
-            nn.Linear(hidden, output_dim),
-        )
+        self.net = nn.Sequential(nn.Linear(input_dim, hidden), nn.ReLU(inplace=True), nn.Linear(hidden, output_dim))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.net(x)
-
 
 class RestEncoder(nn.Module):
-    def __init__(self, input_dim: int = 3, hidden: int = 16, output_dim: int = 32):
+
+    def __init__(self, input_dim: int=3, hidden: int=16, output_dim: int=32):
         super().__init__()
-        self.net = nn.Sequential(
-            nn.Linear(input_dim, hidden), nn.ReLU(inplace=True),
-            nn.Linear(hidden, output_dim),
-        )
+        self.net = nn.Sequential(nn.Linear(input_dim, hidden), nn.ReLU(inplace=True), nn.Linear(hidden, output_dim))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.net(x)
 
-
 class SDEFunc(nn.Module):
-    sde_type = "ito"
-    noise_type = "diagonal"
+    sde_type = 'ito'
+    noise_type = 'diagonal'
 
-    def __init__(self, latent_dim: int = 10, activity_dim: int = 64,
-                 rest_dim: int = 32, drift_hidden: int = 128, diffusion_hidden: int = 32):
+    def __init__(self, latent_dim: int=10, activity_dim: int=64, rest_dim: int=32, drift_hidden: int=128, diffusion_hidden: int=32):
         super().__init__()
         input_dim = latent_dim + activity_dim + rest_dim + 1
-
-        self.drift_net = nn.Sequential(
-            nn.Linear(input_dim, drift_hidden), nn.Tanh(),
-            nn.Linear(drift_hidden, drift_hidden), nn.Tanh(),
-            nn.Linear(drift_hidden, latent_dim),
-        )
-        self.diffusion_net = nn.Sequential(
-            nn.Linear(latent_dim + 1, diffusion_hidden), nn.Softplus(),
-            nn.Linear(diffusion_hidden, latent_dim),
-        )
-
+        self.drift_net = nn.Sequential(nn.Linear(input_dim, drift_hidden), nn.Tanh(), nn.Linear(drift_hidden, drift_hidden), nn.Tanh(), nn.Linear(drift_hidden, latent_dim))
+        self.diffusion_net = nn.Sequential(nn.Linear(latent_dim + 1, diffusion_hidden), nn.Softplus(), nn.Linear(diffusion_hidden, latent_dim))
         self.activity_dim = activity_dim
         self.rest_dim = rest_dim
         self.latent_dim = latent_dim
-
         self._a_t = None
         self._r_t = None
 
@@ -69,32 +51,27 @@ class SDEFunc(nn.Module):
         inp = torch.cat([z, t_vec], dim=-1)
         return self.diffusion_net(inp)
 
-
 class LatentNeuralSDE(nn.Module):
-    def __init__(self, latent_dim: int = 32, activity_input_dim: int = 6,
-                 rest_input_dim: int = 3, drift_hidden: int = 128, diffusion_hidden: int = 32):
+
+    def __init__(self, latent_dim: int=32, activity_input_dim: int=6, rest_input_dim: int=3, drift_hidden: int=128, diffusion_hidden: int=32):
         super().__init__()
         self.latent_dim = latent_dim
-
         self.activity_enc = ActivityEncoder(activity_input_dim, 32, 64)
-        self.rest_enc      = RestEncoder(rest_input_dim, 16, 32)
-        self.sde_func      = SDEFunc(latent_dim, 64, 32, drift_hidden, diffusion_hidden)
+        self.rest_enc = RestEncoder(rest_input_dim, 16, 32)
+        self.sde_func = SDEFunc(latent_dim, 64, 32, drift_hidden, diffusion_hidden)
 
-    def forward(self, z0: torch.Tensor, activity: torch.Tensor, rest: torch.Tensor,
-                ts: torch.Tensor) -> torch.Tensor:
+    def forward(self, z0: torch.Tensor, activity: torch.Tensor, rest: torch.Tensor, ts: torch.Tensor) -> torch.Tensor:
         a_t = self.activity_enc(activity)
         r_t = self.rest_enc(rest)
         self.sde_func.set_context(a_t, r_t)
-
-        zs = torchsde.sdeint(self.sde_func, z0, ts, method="euler", dt=1e-1)
+        zs = torchsde.sdeint(self.sde_func, z0, ts, method='euler', dt=0.1)
         return zs
 
-    def predict_trajectory(self, z0: torch.Tensor, activity: torch.Tensor, rest: torch.Tensor,
-                           n_days: int = 7, n_samples: int = 50):
+    def predict_trajectory(self, z0: torch.Tensor, activity: torch.Tensor, rest: torch.Tensor, n_days: int=7, n_samples: int=50):
         ts = torch.linspace(0, float(n_days), n_days + 1, device=z0.device)
         trajectories = []
         for _ in range(n_samples):
             zs = self.forward(z0, activity, rest, ts)
             trajectories.append(zs)
         trajectories = torch.stack(trajectories, dim=0)
-        return trajectories.mean(dim=0), trajectories.std(dim=0)
+        return (trajectories.mean(dim=0), trajectories.std(dim=0))

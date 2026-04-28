@@ -2,9 +2,9 @@ import numpy as np
 from sklearn.cluster import KMeans
 from collections import defaultdict
 
-
 class SubjectClusterer:
-    def __init__(self, n_clusters: int = 5, feature_dim: int = 48):
+
+    def __init__(self, n_clusters: int=5, feature_dim: int=48):
         self.n_clusters = n_clusters
         self.feature_dim = feature_dim
         self.kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
@@ -40,13 +40,9 @@ class SubjectClusterer:
             return np.zeros(self.feature_dim, dtype=np.float32)
         stacked = np.stack(feature_windows)
         mean = stacked.mean(axis=0)
-        std  = stacked.std(axis=0)
+        std = stacked.std(axis=0)
         return np.concatenate([mean[:24], std[:24]])
 
     def get_stats(self) -> dict:
         groups = self.get_cluster_groups()
-        return {
-            "n_clusters": self.n_clusters,
-            "cluster_sizes": {k: len(v) for k, v in groups.items()},
-            "is_fitted": self._is_fitted,
-        }
+        return {'n_clusters': self.n_clusters, 'cluster_sizes': {k: len(v) for k, v in groups.items()}, 'is_fitted': self._is_fitted}
