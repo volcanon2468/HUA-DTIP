@@ -177,11 +177,3 @@ python evaluate/final_report.py
 ```
 
 ---
-
-## 🤝 Contributing & License
-
-Contributions, issues, and feature requests are welcome!
-
-**License:** This project is licensed under the **MIT License**. See the `LICENSE` file for more information.
-
-*(If you use HUA-DTIP in your research, please cite our corresponding publication.)*
