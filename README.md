@@ -3,7 +3,6 @@
 <div align="center">
   <img alt="Python" src="https://img.shields.io/badge/python-3.11+-blue.svg">
   <img alt="PyTorch" src="https://img.shields.io/badge/PyTorch-2.1.0-EE4C2C.svg">
-  <img alt="License" src="https://img.shields.io/badge/license-MIT-green.svg">
 </div>
 
 <br/>
