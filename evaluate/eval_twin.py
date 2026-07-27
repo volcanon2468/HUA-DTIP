@@ -9,6 +9,9 @@ from src.twin.latent_sde import LatentNeuralSDE
 from src.utils.metrics import mse, coverage_probability
 from train.train_twin import ZTemporalDataset, DaySequenceDataset
 
+FEATURE_DIM = 48
+
+
 def eval_reconstruction(vae: BayesianVAE, loader: DataLoader, device, feat_mean=None, feat_std=None) -> float:
     vae.eval()
     total_mse = 0.0
@@ -18,16 +21,15 @@ def eval_reconstruction(vae: BayesianVAE, loader: DataLoader, device, feat_mean=
             features = torch.nan_to_num(features.to(device), nan=0.0)
             if feat_mean is not None:
                 features = (features - feat_mean.to(device)) / feat_std.to(device)
-            z_input = torch.cat([features, torch.zeros(features.shape[0], 512 - 48, device=device)], dim=-1)
-            z, mu, logvar, recon, _ = vae(z_input)
-            target = z_input[:, :48]
-            total_mse += torch.mean((recon - target) ** 2).item() * features.shape[0]
+            z, mu, logvar, recon, _ = vae(features)
+            total_mse += torch.mean((recon - features) ** 2).item() * features.shape[0]
             n += features.shape[0]
     avg = total_mse / max(n, 1)
     print(f'  State reconstruction MSE: {avg:.6f}  (target: <0.05)')
     return avg
 
-def eval_trajectory(vae: BayesianVAE, sde: LatentNeuralSDE, day_loader: DataLoader, device, n_days: int=7) -> dict:
+
+def eval_trajectory(vae: BayesianVAE, sde: LatentNeuralSDE, day_loader: DataLoader, device, n_days: int = 7) -> dict:
     vae.eval()
     sde.eval()
     all_mae, all_coverage = ([], [])
@@ -35,13 +37,13 @@ def eval_trajectory(vae: BayesianVAE, sde: LatentNeuralSDE, day_loader: DataLoad
         for x_seq, y_next in day_loader:
             x_seq = torch.nan_to_num(x_seq.to(device))
             y_next = torch.nan_to_num(y_next.to(device))
-            z_input = torch.cat([x_seq[:, -1, :48], torch.zeros(x_seq.shape[0], 512 - 48, device=device)], dim=-1)
-            mu0, _ = vae.encoder(z_input)
+            z_input_cur = x_seq[:, -1, :FEATURE_DIM]
+            mu0, _ = vae.encoder(z_input_cur)
             activity = torch.zeros(mu0.shape[0], 6, device=device)
             rest = torch.zeros(mu0.shape[0], 3, device=device)
             z_mean, z_std = sde.predict_trajectory(mu0, activity, rest, n_days=1, n_samples=50)
-            y_inp = torch.cat([y_next[:, :48], torch.zeros(y_next.shape[0], 512 - 48, device=device)], dim=-1)
-            mu_true, _ = vae.encoder(y_inp)
+            y_input = y_next[:, :FEATURE_DIM]
+            mu_true, _ = vae.encoder(y_input)
             err = torch.abs(z_mean[-1] - mu_true).mean(dim=-1)
             all_mae.append(err.cpu().numpy())
             cov = coverage_probability(z_mean[-1].cpu().numpy(), z_std[-1].cpu().numpy(), mu_true.cpu().numpy(), z=2.1)
@@ -51,6 +53,7 @@ def eval_trajectory(vae: BayesianVAE, sde: LatentNeuralSDE, day_loader: DataLoad
     print(f'  7-day trajectory MAE: {mae_val:.4f}  (target: <0.12)')
     print(f'  Uncertainty calibration (95% coverage): {cov_val:.4f}')
     return {'trajectory_mae': mae_val, 'uncertainty_calibration': cov_val}
+
 
 def main():
     data_cfg = OmegaConf.load('configs/data.yaml')
@@ -65,11 +68,11 @@ def main():
     for name, model in [('twin_vae', vae), ('twin_sde', sde)]:
         p = os.path.join(checkpoint_dir, f'{name}.pt')
         if os.path.exists(p):
-            model.load_state_dict(torch.load(p, map_location=device))
+            model.load_state_dict(torch.load(p, map_location=device, weights_only=True))
     feat_mean, feat_std = (None, None)
     norm_path = os.path.join(checkpoint_dir, 'feature_norm_stats.pt')
     if os.path.exists(norm_path):
-        stats = torch.load(norm_path, map_location=device)
+        stats = torch.load(norm_path, map_location=device, weights_only=True)
         feat_mean = stats['mean']
         feat_std = stats['std']
         print('  Loaded feature normalization stats.')
@@ -91,5 +94,7 @@ def main():
         w.writerow(['trajectory_mae', f"{traj_metrics['trajectory_mae']:.4f}", '<0.12'])
         w.writerow(['uncertainty_calibration', f"{traj_metrics['uncertainty_calibration']:.4f}", '>0.90'])
     print(f'\nResults saved to {results_dir}')
+
+
 if __name__ == '__main__':
     main()

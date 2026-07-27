@@ -49,7 +49,14 @@ def process_subject(imu: np.ndarray, cardio: np.ndarray, features_fn, hrv_fn, su
                 continue
         feat = features_fn(imu_w, card_w)
         hrv_vec = hrv_fn(card_w)
-        label = int(label_seq[t * stride] if label_seq is not None else -1)
+        if label_seq is not None:
+            win_start = t * stride
+            win_end = min(win_start + window_size, len(label_seq))
+            window_labels = label_seq[win_start:win_end]
+            vals, counts = np.unique(window_labels, return_counts=True)
+            label = int(vals[counts.argmax()])
+        else:
+            label = -1
         ts = float(timestamps[t * stride]) if timestamps is not None else float(t)
         window_data = {'imu': torch.tensor(imu_w, dtype=torch.float32), 'cardio': torch.tensor(card_w, dtype=torch.float32), 'features': torch.tensor(feat, dtype=torch.float32), 'hrv': torch.tensor(hrv_vec, dtype=torch.float32), 'label': label, 'timestamp': ts, 'quality': quality}
         torch.save(window_data, os.path.join(windows_dir, f'window_{t:05d}.pt'))

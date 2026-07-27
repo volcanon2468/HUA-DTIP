@@ -45,7 +45,7 @@ class EWCRegularizer:
         self._fisher = {}
         self._is_fitted = False
 
-    def compute_fisher(self, model: nn.Module, data_loader, device, n_samples: int=200):
+    def compute_fisher(self, model: nn.Module, data_loader, device, n_samples: int = 200, loss_fn=None):
         model.eval()
         fisher = {n: torch.zeros_like(p) for n, p in model.named_parameters() if p.requires_grad}
         count = 0
@@ -57,7 +57,12 @@ class EWCRegularizer:
             output = model(x)
             if isinstance(output, tuple):
                 output = output[0]
-            loss = output.pow(2).mean()
+            if loss_fn is not None:
+                target = batch[1].to(device) if isinstance(batch, (list, tuple)) and len(batch) > 1 else output.detach()
+                loss = loss_fn(output, target)
+            else:
+                log_probs = torch.log_softmax(output, dim=-1) if output.shape[-1] > 1 else output
+                loss = -log_probs.mean()
             loss.backward()
             for n, p in model.named_parameters():
                 if p.requires_grad and p.grad is not None:

@@ -4,9 +4,10 @@ from collections import defaultdict
 
 class SubjectClusterer:
 
-    def __init__(self, n_clusters: int=5, feature_dim: int=48):
+    def __init__(self, n_clusters: int = 5, feature_dim: int = 48):
         self.n_clusters = n_clusters
         self.feature_dim = feature_dim
+        self.profile_dim = feature_dim * 2
         self.kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
         self.cluster_labels = {}
         self.cluster_centroids = None
@@ -37,11 +38,11 @@ class SubjectClusterer:
 
     def build_subject_profile(self, feature_windows: list) -> np.ndarray:
         if not feature_windows:
-            return np.zeros(self.feature_dim, dtype=np.float32)
+            return np.zeros(self.profile_dim, dtype=np.float32)
         stacked = np.stack(feature_windows)
         mean = stacked.mean(axis=0)
         std = stacked.std(axis=0)
-        return np.concatenate([mean[:24], std[:24]])
+        return np.concatenate([mean, std])
 
     def get_stats(self) -> dict:
         groups = self.get_cluster_groups()

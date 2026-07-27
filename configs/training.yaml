@@ -26,6 +26,7 @@ training:
     batch_size: 64
     epochs: 100
     patience: 10
+    beta: 0.1
     scheduler: cosine
     joint_finetune_lr: 2.0e-4
     sde:
@@ -50,11 +51,6 @@ training:
     local_epochs: 5
     client_lr: 1.0e-3
     fedprox_mu: 0.01
-
-model:
-  rl:
-    actor_hidden: 256
-    critic_hidden: 256
 
 encoders:
   batch_size: 64

@@ -2,12 +2,20 @@ import torch
 import torch.nn as nn
 import numpy as np
 
+
 class NBEATSBlock(nn.Module):
 
-    def __init__(self, input_dim: int, hidden_dim: int, output_dim: int, backcast_dim: int, basis_type: str='generic'):
+    def __init__(self, input_dim: int, hidden_dim: int, output_dim: int, backcast_dim: int, basis_type: str = 'generic'):
         super().__init__()
         self.basis_type = basis_type
-        self.fc = nn.Sequential(nn.Linear(input_dim, hidden_dim), nn.ReLU(inplace=True), nn.Linear(hidden_dim, hidden_dim), nn.ReLU(inplace=True), nn.Linear(hidden_dim, hidden_dim), nn.ReLU(inplace=True))
+        self.fc = nn.Sequential(
+            nn.Linear(input_dim, hidden_dim),
+            nn.ReLU(inplace=True),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(inplace=True),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(inplace=True),
+        )
         self.backcast_head = nn.Linear(hidden_dim, backcast_dim)
         self.forecast_head = nn.Linear(hidden_dim, output_dim)
 
@@ -17,9 +25,10 @@ class NBEATSBlock(nn.Module):
         forecast = self.forecast_head(h)
         return (backcast, forecast)
 
+
 class MacroScaleModel(nn.Module):
 
-    def __init__(self, input_dim: int=640, block_dim: int=256, output_dim: int=128, sequence_len: int=6):
+    def __init__(self, input_dim: int = 640, block_dim: int = 256, output_dim: int = 128, sequence_len: int = 6):
         super().__init__()
         self.input_dim = input_dim
         self.sequence_len = sequence_len
@@ -47,7 +56,8 @@ class MacroScaleModel(nn.Module):
         z = self.forward(x)
         return (self.capacity_head(z), self.trajectory_head(z))
 
-def generate_synthetic_trajectories(meso_model: nn.Module, n_trajectories: int=500, n_months: int=6, device: str='cpu') -> list:
+
+def generate_synthetic_trajectories(meso_model: nn.Module, n_trajectories: int = 500, n_months: int = 6, device: str = 'cpu') -> list:
     meso_model.eval()
     trajectories = []
     with torch.no_grad():

@@ -8,6 +8,7 @@ from src.encoders.cardio_encoder import CardioEncoder
 from src.utils.metrics import activity_f1, mae
 from train.train_encoders import WindowDataset
 
+
 def loso_imu_eval(processed_dir, checkpoint_dir, n_subjects=10, n_classes=12, device=torch.device('cpu')):
     results = []
     all_ids = list(range(1, n_subjects + 1))
@@ -15,7 +16,7 @@ def loso_imu_eval(processed_dir, checkpoint_dir, n_subjects=10, n_classes=12, de
         encoder = SWCTNet()
         ckpt_path = os.path.join(checkpoint_dir, 'encoder_imu.pt')
         if os.path.exists(ckpt_path):
-            ckpt = torch.load(ckpt_path, map_location=device)
+            ckpt = torch.load(ckpt_path, map_location=device, weights_only=True)
             ckpt_n_classes = ckpt.get('classifier.weight', torch.empty(0)).shape[0]
             if ckpt_n_classes > 0:
                 encoder.build_classifier(ckpt_n_classes)
@@ -44,11 +45,12 @@ def loso_imu_eval(processed_dir, checkpoint_dir, n_subjects=10, n_classes=12, de
         print(f'  Subject {test_id:2d} — F1: {f1:.4f}')
     return results
 
+
 def hr_mae_eval(processed_dir, checkpoint_dir, device=torch.device('cpu')):
     encoder = CardioEncoder().to(device)
     ckpt_path = os.path.join(checkpoint_dir, 'encoder_cardio.pt')
     if os.path.exists(ckpt_path):
-        encoder.load_state_dict(torch.load(ckpt_path, map_location=device))
+        encoder.load_state_dict(torch.load(ckpt_path, map_location=device, weights_only=True))
     encoder.eval()
     loader = DataLoader(WindowDataset(processed_dir), batch_size=64, shuffle=False)
     all_pred, all_true = ([], [])
@@ -64,6 +66,7 @@ def hr_mae_eval(processed_dir, checkpoint_dir, device=torch.device('cpu')):
     mae_val = mae(torch.cat(all_pred), torch.cat(all_true))
     print(f'  HR MAE: {mae_val:.2f} bpm  (target: <5 bpm)')
     return mae_val
+
 
 def main():
     data_cfg = OmegaConf.load('configs/data.yaml')
@@ -91,5 +94,7 @@ def main():
         writer.writerow(['hr_mae_bpm', f'{hr_mae_val:.4f}', '<5'])
         writer.writerow(['imu_avg_f1', f'{avg_f1:.4f}', '>0.85'])
     print(f'\nResults saved to {results_dir}')
+
+
 if __name__ == '__main__':
     main()

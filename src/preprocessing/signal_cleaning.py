@@ -56,8 +56,10 @@ def handle_missing(signal: np.ndarray, threshold_interp: float=0.1, threshold_di
             signal[:, ch] = np.interp(x, x[valid], signal[valid, ch])
     return (signal.squeeze(-1) if squeeze else signal, False)
 
-def remove_motion_artifact(ppg: np.ndarray, acc: np.ndarray, fs: float=50.0) -> np.ndarray:
+def remove_motion_artifact(ppg: np.ndarray, acc: np.ndarray, fs: float = 50.0) -> np.ndarray:
     acc_mag = np.linalg.norm(acc, axis=-1, keepdims=True) if acc.ndim > 1 else acc[:, None]
     acc_lp = lowpass_filter(acc_mag, fs, cutoff=5.0)
-    ppg_clean = ppg - acc_lp[:len(ppg)] * np.corrcoef(ppg.ravel(), acc_lp[:len(ppg)].ravel())[0, 1]
+    raw_corr = np.corrcoef(ppg.ravel(), acc_lp[:len(ppg)].ravel())[0, 1]
+    corr = float(np.clip(np.nan_to_num(raw_corr, nan=0.0), -1.0, 1.0))
+    ppg_clean = ppg - acc_lp[:len(ppg)] * corr
     return ppg_clean

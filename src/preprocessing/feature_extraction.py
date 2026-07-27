@@ -19,11 +19,6 @@ def extract_imu_features(imu: np.ndarray) -> np.ndarray:
     corr2 = np.corrcoef(acc_mag[:half], acc_mag[half:half * 2])
     gait_symmetry = float(np.nan_to_num(corr2[0, 1]))
     stride_length = float(acc_mag.max() - acc_mag.min())
-    gravity = acc.mean(axis=0)
-    g_norm = np.linalg.norm(gravity) + 1e-08
-    postural_score = float(np.arccos(np.clip(gravity[2] / g_norm, -1, 1)))
-    diff_mag = np.abs(np.diff(acc_mag))
-    transition_count = float((diff_mag > diff_mag.mean() + 2 * diff_mag.std()).sum())
     acc_mean = acc.mean(axis=0)
     acc_std = acc.std(axis=0)
     gyro_mean = gyro.mean(axis=0)

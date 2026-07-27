@@ -16,7 +16,7 @@ def eval_personalization(processed_dir: str, checkpoint_dir: str, device: torch.
     global_model = FederatedModel().to(device)
     p = os.path.join(checkpoint_dir, 'federated_global.pt')
     if os.path.exists(p):
-        global_model.load_state_dict(torch.load(p, map_location=device))
+        global_model.load_state_dict(torch.load(p, map_location=device, weights_only=True))
     available = get_available_subjects(processed_dir)
     results = []
     for sid in available:
@@ -48,7 +48,7 @@ def eval_cold_start(processed_dir: str, checkpoint_dir: str, device: torch.devic
     global_model = FederatedModel().to(device)
     p = os.path.join(checkpoint_dir, 'federated_global.pt')
     if os.path.exists(p):
-        global_model.load_state_dict(torch.load(p, map_location=device))
+        global_model.load_state_dict(torch.load(p, map_location=device, weights_only=True))
     available = get_available_subjects(processed_dir)
     results = []
     for sid in available:

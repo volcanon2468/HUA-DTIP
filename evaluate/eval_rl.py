@@ -78,15 +78,15 @@ def main():
     for name, model in [('twin_vae', vae), ('twin_sde', sde)]:
         p = os.path.join(checkpoint_dir, f'{name}.pt')
         if os.path.exists(p):
-            model.load_state_dict(torch.load(p, map_location=device))
-    state_dim = 20
-    action_dim = 6
+            model.load_state_dict(torch.load(p, map_location=device, weights_only=True))
+    env = TwinGymEnv(vae, sde, episode_len=28, device=str(device))
+    state_dim = env.observation_space.shape[0]
+    action_dim = env.action_space.shape[0]
     actor = SquashedGaussianActor(state_dim, action_dim).to(device)
     p = os.path.join(checkpoint_dir, 'rl_actor.pt')
     if os.path.exists(p):
-        actor.load_state_dict(torch.load(p, map_location=device))
+        actor.load_state_dict(torch.load(p, map_location=device, weights_only=True))
     actor.eval()
-    env = TwinGymEnv(vae, sde, episode_len=28, device=str(device))
     safety = SafetyGuard()
     reward_fn = MultiObjectiveReward()
     print('=== Policy Evaluation (50 episodes) ===')

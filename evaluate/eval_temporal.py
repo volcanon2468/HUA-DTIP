@@ -70,7 +70,7 @@ def main():
     for name, model in [('encoder_imu', imu_enc), ('encoder_cardio', cardio_enc), ('encoder_feature', feat_enc), ('encoder_fusion', fusion_mod), ('temporal_micro', micro_model), ('temporal_meso', meso_model)]:
         p = os.path.join(checkpoint_dir, f'{name}.pt')
         if os.path.exists(p):
-            model.load_state_dict(torch.load(p, map_location=device))
+            model.load_state_dict(torch.load(p, map_location=device, weights_only=True))
     micro_mae = eval_micro(micro_model, imu_enc, cardio_enc, feat_enc, fusion_mod, processed_dir, device)
     meso_mae = eval_meso(meso_model, processed_dir, device)
     out_path = os.path.join(results_dir, 'temporal_prediction_errors.csv')

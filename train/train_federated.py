@@ -27,7 +27,7 @@ class SubjectDataset(Dataset):
         return len(self.paths)
 
     def __getitem__(self, idx):
-        return torch.load(self.paths[idx], map_location='cpu')
+        return torch.load(self.paths[idx], map_location='cpu', weights_only=False)
 
 class FederatedModel(nn.Module):
 
@@ -75,7 +75,7 @@ def simulate_federated(cfg: DictConfig, device: torch.device):
     for sid in selected_sids:
         ds = SubjectDataset(processed_dir, sid)
         if len(ds) > 0:
-            feats = [torch.load(p, map_location='cpu')['features'].numpy() for p in ds.paths[:50]]
+            feats = [torch.load(p, map_location='cpu', weights_only=False)['features'].numpy() for p in ds.paths[:50]]
             profiles[sid] = clusterer.build_subject_profile(feats)
         else:
             profiles[sid] = np.random.randn(48).astype(np.float32)

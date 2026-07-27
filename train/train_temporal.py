@@ -2,7 +2,7 @@ import os
 import glob
 import torch
 import torch.nn as nn
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset, DataLoader, TensorDataset
 import hydra
 from omegaconf import DictConfig, OmegaConf
 from src.temporal.micro_scale import MicroScaleModel
@@ -16,9 +16,12 @@ from src.encoders.fusion import CrossModalFusion
 from src.utils.seed import set_seed
 from src.utils.logger import init_run, log_metrics, log_model, load_checkpoint, finish_run
 
+MESO_SEQ_LEN = 7
+
+
 class HourlyBufferDataset(Dataset):
 
-    def __init__(self, processed_dir: str, buffer_len: int=180, subject_ids: list=None):
+    def __init__(self, processed_dir: str, buffer_len: int = 180, subject_ids: list = None):
         self.buffer_len = buffer_len
         self.sequences = []
         pattern = os.path.join(processed_dir, 'subject_*', 'windows', 'window_*.pt')
@@ -51,9 +54,10 @@ class HourlyBufferDataset(Dataset):
         hrv_seq = torch.stack([w['hrv'] for w in windows])
         return (imu_seq, cardio_seq, feat_seq, hr_seq, hrv_seq)
 
+
 class DailySequenceDataset(Dataset):
 
-    def __init__(self, processed_dir: str, seq_len: int=7, subject_ids: list=None):
+    def __init__(self, processed_dir: str, seq_len: int = MESO_SEQ_LEN, subject_ids: list = None):
         self.sequences = []
         pattern = os.path.join(processed_dir, 'subject_*', 'daily_summaries', 'day_*.pt')
         all_paths = {}
@@ -75,9 +79,10 @@ class DailySequenceDataset(Dataset):
 
     def __getitem__(self, idx):
         input_paths, target_path = self.sequences[idx]
-        x = torch.stack([torch.load(p, map_location='cpu') for p in input_paths])
-        y = torch.load(target_path, map_location='cpu')
+        x = torch.stack([torch.load(p, map_location='cpu', weights_only=False) for p in input_paths])
+        y = torch.load(target_path, map_location='cpu', weights_only=False)
         return (x, y)
+
 
 def train_micro(micro_model, imu_enc, cardio_enc, feat_enc, fusion_mod, loader, cfg, device):
     micro_model.train()
@@ -107,7 +112,6 @@ def train_micro(micro_model, imu_enc, cardio_enc, feat_enc, fusion_mod, loader, 
                 h_cardio = cardio_enc(card_flat).view(B, T, -1)
                 h_feat = feat_enc(feat_flat).view(B, T, -1)
                 h_fused = torch.stack([fusion_mod(h_imu[:, t], h_cardio[:, t], h_feat[:, t]) for t in range(T)], dim=1)
-            z_micro = micro_model(h_fused)
             hr_pred, hrv_pred = micro_model.predict(h_fused)
             loss = mse(hr_pred.squeeze(-1), hr_seq[:, -5:].mean(dim=1)) + mse(hrv_pred, hrv_seq[:, -5:, :].mean(dim=1))
             opt.zero_grad()
@@ -126,6 +130,7 @@ def train_micro(micro_model, imu_enc, cardio_enc, feat_enc, fusion_mod, loader, 
                 break
         if epoch % 10 == 0:
             print(f'  [Micro] epoch {epoch:3d}  loss={avg:.4f}')
+
 
 def train_meso(meso_model, loader, cfg, device):
     meso_model.train()
@@ -158,13 +163,12 @@ def train_meso(meso_model, loader, cfg, device):
         if epoch % 10 == 0:
             print(f'  [Meso] epoch {epoch:3d}  loss={avg:.4f}')
 
+
 def train_macro(macro_model, meso_model, processed_dir, cfg, device):
     macro_model.train()
     opt = torch.optim.Adam(macro_model.parameters(), lr=cfg.training.temporal.lr)
     mse = nn.MSELoss()
-    ce = nn.CrossEntropyLoss()
     synthetic = generate_synthetic_trajectories(meso_model, n_trajectories=500, n_months=7, device=str(device))
-    from torch.utils.data import TensorDataset
     traj_tensor = torch.stack(synthetic)
     traj_in = traj_tensor[:, :-1]
     traj_out = traj_tensor[:, -1, :1]
@@ -187,6 +191,40 @@ def train_macro(macro_model, meso_model, processed_dir, cfg, device):
         log_metrics({'macro/loss': avg}, step=epoch)
         if epoch % 10 == 0:
             print(f'  [Macro] epoch {epoch:3d}  loss={avg:.4f}')
+
+
+def train_hierarchical_fusion(fusion_t, meso_model, daily_loader, cfg, device):
+    fusion_t.train()
+    meso_model.eval()
+    for p in meso_model.parameters():
+        p.requires_grad = False
+    opt = torch.optim.Adam(fusion_t.parameters(), lr=cfg.training.temporal.lr)
+    mse = nn.MSELoss()
+    for epoch in range(30):
+        total_loss = 0.0
+        n = 0
+        for x_daily, y_daily in daily_loader:
+            x_daily = torch.nan_to_num(x_daily.to(device), nan=0.0)
+            y_daily = torch.nan_to_num(y_daily.to(device), nan=0.0)
+            B = x_daily.shape[0]
+            with torch.no_grad():
+                z_meso_seq, _ = meso_model.predict(x_daily)
+            z_micro = torch.zeros(B, 256, device=device)
+            z_macro = torch.zeros(B, 128, device=device)
+            z_fused = fusion_t(z_micro, z_meso_seq, z_macro)
+            loss = mse(z_fused[:, :y_daily.shape[-1]], y_daily[:, :z_fused.shape[-1]])
+            opt.zero_grad()
+            loss.backward()
+            opt.step()
+            total_loss += loss.item() * B
+            n += B
+        avg = total_loss / max(n, 1)
+        log_metrics({'hier_fusion/loss': avg}, step=epoch)
+        if epoch % 10 == 0:
+            print(f'  [HierFusion] epoch {epoch:2d}  loss={avg:.4f}')
+    for p in meso_model.parameters():
+        p.requires_grad = True
+
 
 @hydra.main(config_path='../configs', config_name='training', version_base=None)
 def main(cfg: DictConfig):
@@ -213,7 +251,7 @@ def main(cfg: DictConfig):
     train_micro(micro_model, imu_enc, cardio_enc, feat_enc, fusion_mod, hourly_loader, cfg, device)
     log_model(micro_model, 'temporal_micro', cfg)
     print('=== Training Meso-Scale ===')
-    daily_ds = DailySequenceDataset(processed_dir, seq_len=1)
+    daily_ds = DailySequenceDataset(processed_dir, seq_len=MESO_SEQ_LEN)
     daily_loader = DataLoader(daily_ds, batch_size=min(16, max(len(daily_ds), 1)), shuffle=True, num_workers=2, drop_last=False)
     train_meso(meso_model, daily_loader, cfg, device)
     log_model(meso_model, 'temporal_meso', cfg)
@@ -221,18 +259,11 @@ def main(cfg: DictConfig):
     train_macro(macro_model, meso_model, processed_dir, cfg, device)
     log_model(macro_model, 'temporal_macro', cfg)
     print('=== Training Hierarchical Fusion ===')
-    z_micro = torch.randn(16, 256).to(device)
-    z_meso = torch.randn(16, 512).to(device)
-    z_macro = torch.randn(16, 128).to(device)
-    opt_f = torch.optim.Adam(fusion_t.parameters(), lr=cfg.training.temporal.lr)
-    for _ in range(20):
-        z_t = fusion_t(z_micro, z_meso, z_macro)
-        loss = (z_t ** 2).mean()
-        opt_f.zero_grad()
-        loss.backward()
-        opt_f.step()
+    train_hierarchical_fusion(fusion_t, meso_model, daily_loader, cfg, device)
     log_model(fusion_t, 'temporal_fusion', cfg)
     print('Temporal training complete.')
     finish_run()
+
+
 if __name__ == '__main__':
     main()

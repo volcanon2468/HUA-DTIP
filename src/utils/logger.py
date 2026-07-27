@@ -35,7 +35,7 @@ def save_checkpoint(state: dict, name: str, cfg: DictConfig):
 
 def load_checkpoint(name: str, cfg: DictConfig) -> dict:
     path = os.path.join(cfg.checkpoints.dir, f'{name}.pt')
-    return torch.load(path, map_location='cpu')
+    return torch.load(path, map_location='cpu', weights_only=True)
 
 def finish_run():
     if _run is not None:

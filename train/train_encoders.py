@@ -16,9 +16,10 @@ from src.utils.seed import set_seed
 from src.utils.logger import init_run, log_metrics, log_model, finish_run
 from src.utils.metrics import activity_f1
 
+
 class WindowDataset(Dataset):
 
-    def __init__(self, processed_dir: str, subject_ids: list=None):
+    def __init__(self, processed_dir: str, subject_ids: list = None):
         self.paths = []
         pattern = os.path.join(processed_dir, 'subject_*', 'windows', 'window_*.pt')
         for p in sorted(glob.glob(pattern)):
@@ -41,15 +42,18 @@ class WindowDataset(Dataset):
             data['cardio'] = F.pad(cardio, (0, 1))
         return data
 
-def nt_xent_loss(z1: torch.Tensor, z2: torch.Tensor, temperature: float=0.07) -> torch.Tensor:
+
+def nt_xent_loss(z1: torch.Tensor, z2: torch.Tensor, temperature: float = 0.07) -> torch.Tensor:
     B = z1.shape[0]
     z = torch.cat([z1, z2], dim=0)
     z = F.normalize(z, dim=-1)
     sim = torch.mm(z, z.T) / temperature
     mask = torch.eye(2 * B, dtype=torch.bool, device=z.device)
-    sim = sim.masked_fill(mask, -1000000000.0)
-    labels = torch.cat([torch.arange(B, device=z.device) + B, torch.arange(B, device=z.device)])
+    sim = sim.masked_fill(mask, -1e9)
+    labels = torch.cat([torch.arange(B, device=z.device) + B,
+                        torch.arange(B, device=z.device)])
     return F.cross_entropy(sim, labels)
+
 
 def imu_augment(window: torch.Tensor) -> torch.Tensor:
     aug = window + 0.01 * torch.randn_like(window)
@@ -57,13 +61,20 @@ def imu_augment(window: torch.Tensor) -> torch.Tensor:
     start = random.randint(0, T // 4)
     end = random.randint(3 * T // 4, T)
     crop = aug[start:end]
-    aug = F.interpolate(crop.T.unsqueeze(0), size=T, mode='linear', align_corners=False).squeeze(0).T
+    aug = F.interpolate(
+        crop.T.unsqueeze(0), size=T, mode='linear', align_corners=False
+    ).squeeze(0).T
     return aug
+
 
 def pretrain_imu(encoder, proj_head, loader, cfg, device):
     encoder.train()
     proj_head.train()
-    opt = torch.optim.Adam(list(encoder.parameters()) + list(proj_head.parameters()), lr=cfg.training.encoders.lr, weight_decay=cfg.training.encoders.weight_decay)
+    opt = torch.optim.Adam(
+        list(encoder.parameters()) + list(proj_head.parameters()),
+        lr=cfg.training.encoders.lr,
+        weight_decay=cfg.training.encoders.weight_decay,
+    )
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(opt, cfg.training.encoders.epochs)
     best_loss = float('inf')
     patience_count = 0
@@ -96,6 +107,7 @@ def pretrain_imu(encoder, proj_head, loader, cfg, device):
             print(f'  [IMU pretrain] epoch {epoch:3d}  loss={avg_loss:.4f}')
     return best_loss
 
+
 def finetune_imu(encoder, loader, cfg, device, n_classes):
     all_labels_raw = []
     for batch in loader:
@@ -111,14 +123,16 @@ def finetune_imu(encoder, loader, cfg, device, n_classes):
     ce = nn.CrossEntropyLoss()
     best_f1 = 0.0
     for epoch in range(30):
-        all_logits, all_mapped = ([], [])
+        all_logits, all_mapped = [], []
         for batch in loader:
             imu = batch['imu'].to(device)
             labels = batch['label']
             valid = labels >= 0
             if not valid.any():
                 continue
-            mapped = torch.tensor([label_map.get(int(l), 0) for l in labels[valid]], device=device)
+            mapped = torch.tensor(
+                [label_map.get(int(l), 0) for l in labels[valid]], device=device
+            )
             logits = encoder.classify(imu[valid])
             loss = ce(logits, mapped)
             opt.zero_grad()
@@ -133,6 +147,7 @@ def finetune_imu(encoder, loader, cfg, device, n_classes):
             if epoch % 10 == 0:
                 print(f'  [IMU finetune] epoch {epoch:2d}  F1={f1:.4f}')
     return best_f1
+
 
 def train_cardio(encoder, loader, cfg, device):
     encoder.train()
@@ -166,35 +181,87 @@ def train_cardio(encoder, loader, cfg, device):
             print(f'  [Cardio] epoch {epoch:3d}  MSE={avg:.4f}')
     return best_mse
 
+
 def train_fusion(imu_enc, cardio_enc, feat_enc, fusion, loader, cfg, device):
     for p in list(imu_enc.parameters()) + list(cardio_enc.parameters()):
         p.requires_grad = False
-    opt = torch.optim.Adam(list(feat_enc.parameters()) + list(fusion.parameters()), lr=cfg.training.encoders.lr)
+
+    all_labels_raw = []
+    for batch in loader:
+        labs = batch['label']
+        all_labels_raw.extend(labs[labs >= 0].tolist())
+    unique_labels = sorted(set(all_labels_raw))
+    label_map = {old: new for new, old in enumerate(unique_labels)}
+    n_classes = len(unique_labels)
+    print(f'  [Fusion] Using {n_classes} classes for HAR supervision')
+
+    fusion_har_head = nn.Linear(fusion.output_dim, n_classes).to(device)
+    fusion_hr_head  = nn.Linear(fusion.output_dim, 1).to(device)
+
+    opt = torch.optim.Adam(
+        list(feat_enc.parameters()) +
+        list(fusion.parameters()) +
+        list(fusion_har_head.parameters()) +
+        list(fusion_hr_head.parameters()),
+        lr=cfg.training.encoders.lr,
+    )
+    ce_loss  = nn.CrossEntropyLoss()
     mse_loss = nn.MSELoss()
+
+    best_loss = float('inf')
+    patience_count = 0
+
     for epoch in range(50):
         total_loss = 0.0
         n = 0
         for batch in loader:
-            imu = torch.nan_to_num(batch['imu'].to(device), nan=0.0)
+            imu    = torch.nan_to_num(batch['imu'].to(device), nan=0.0)
             cardio = torch.nan_to_num(batch['cardio'].to(device), nan=0.0)
-            feats = torch.nan_to_num(batch['features'].to(device), nan=0.0)
+            feats  = torch.nan_to_num(batch['features'].to(device), nan=0.0)
+            labels = batch['label'].to(device)
+            hr_target = feats[:, 20].unsqueeze(-1)
+
             with torch.no_grad():
-                h_imu = imu_enc(imu)
+                h_imu    = imu_enc(imu)
                 h_cardio = cardio_enc(cardio)
-            h_feat = feat_enc(feats)
-            h_fused = fusion(h_imu, h_cardio, h_feat)
-            loss = mse_loss(h_fused, h_cardio.detach())
+
+            h_feat   = feat_enc(feats)
+            h_fused  = fusion(h_imu, h_cardio, h_feat)
+            hr_pred   = fusion_hr_head(h_fused)
+            loss_hr   = mse_loss(hr_pred, hr_target)
+
+            valid = labels >= 0
+            if valid.any():
+                mapped = torch.tensor(
+                    [label_map.get(int(l), 0) for l in labels[valid]], device=device
+                )
+                logits   = fusion_har_head(h_fused[valid])
+                loss_har = ce_loss(logits, mapped)
+            else:
+                loss_har = torch.tensor(0.0, device=device)
+
+            loss = loss_hr + loss_har
             opt.zero_grad()
             loss.backward()
             opt.step()
             total_loss += loss.item() * len(imu)
             n += len(imu)
+
         avg = total_loss / max(n, 1)
-        log_metrics({'fusion_train/mse': avg}, step=epoch)
+        log_metrics({'fusion_train/loss': avg}, step=epoch)
+        if avg < best_loss:
+            best_loss = avg
+            patience_count = 0
+        else:
+            patience_count += 1
+            if patience_count >= 10:
+                break
         if epoch % 10 == 0:
-            print(f'  [Fusion] epoch {epoch:2d}  MSE={avg:.4f}')
+            print(f'  [Fusion] epoch {epoch:2d}  loss={avg:.4f}')
+
     for p in list(imu_enc.parameters()) + list(cardio_enc.parameters()):
         p.requires_grad = True
+
 
 @hydra.main(config_path='../configs', config_name='training', version_base=None)
 def main(cfg: DictConfig):
@@ -204,28 +271,44 @@ def main(cfg: DictConfig):
     device = torch.device(cfg.device if torch.cuda.is_available() else 'cpu')
     init_run(cfg, name='encoder-pretraining')
     processed_dir = data_cfg.paths.processed
+
     dataset = WindowDataset(processed_dir)
-    loader = DataLoader(dataset, batch_size=cfg.encoders.batch_size, shuffle=True, num_workers=2, pin_memory=True, drop_last=True)
-    imu_enc = SWCTNet().to(device)
-    proj_head = ProjectionHead().to(device)
+    loader = DataLoader(
+        dataset,
+        batch_size=cfg.training.encoders.batch_size,
+        shuffle=True,
+        num_workers=2,
+        pin_memory=True,
+        drop_last=True,
+    )
+
+    imu_enc    = SWCTNet().to(device)
+    proj_head  = ProjectionHead().to(device)
     cardio_enc = CardioEncoder().to(device)
-    feat_enc = FeatureEncoder().to(device)
+    feat_enc   = FeatureEncoder().to(device)
     fusion_mod = CrossModalFusion().to(device)
+
     print('=== Phase 1: IMU Pre-training (SimCLR) ===')
     pretrain_imu(imu_enc, proj_head, loader, cfg, device)
     log_model(imu_enc, 'encoder_imu_pretrained', cfg)
+
     print('=== Phase 2: IMU Fine-tuning ===')
     n_classes = data_cfg.mhealth.n_activity_classes
     finetune_imu(imu_enc, loader, cfg, device, n_classes)
     log_model(imu_enc, 'encoder_imu', cfg)
+
     print('=== Phase 3: Cardio Encoder Training ===')
     train_cardio(cardio_enc, loader, cfg, device)
     log_model(cardio_enc, 'encoder_cardio', cfg)
-    print('=== Phase 4: Feature Encoder + Fusion Training ===')
+
+    print('=== Phase 4: Feature Encoder + Fusion Training (task-supervised) ===')
     train_fusion(imu_enc, cardio_enc, feat_enc, fusion_mod, loader, cfg, device)
     log_model(feat_enc, 'encoder_feature', cfg)
     log_model(fusion_mod, 'encoder_fusion', cfg)
+
     print('Training complete.')
     finish_run()
+
+
 if __name__ == '__main__':
     main()

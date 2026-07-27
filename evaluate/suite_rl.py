@@ -10,19 +10,21 @@ from src.rl.reward import MultiObjectiveReward
 from src.rl.safety import SafetyGuard
 from evaluate.eval_rl import evaluate_policy, compare_with_baseline
 
+
 def run_rl_eval(checkpoint_dir: str, device) -> dict:
     vae = BayesianVAE().to(device)
     sde = LatentNeuralSDE().to(device)
     for name, model in [('twin_vae', vae), ('twin_sde', sde)]:
         p = os.path.join(checkpoint_dir, f'{name}.pt')
         if os.path.exists(p):
-            model.load_state_dict(torch.load(p, map_location=device))
-    actor = SquashedGaussianActor(64, 6).to(device)
+            model.load_state_dict(torch.load(p, map_location=device, weights_only=True))
+    env = TwinGymEnv(vae, sde, episode_len=28, device=str(device))
+    state_dim = env.observation_space.shape[0]
+    actor = SquashedGaussianActor(state_dim, 6).to(device)
     p = os.path.join(checkpoint_dir, 'rl_actor.pt')
     if os.path.exists(p):
-        actor.load_state_dict(torch.load(p, map_location=device))
+        actor.load_state_dict(torch.load(p, map_location=device, weights_only=True))
     actor.eval()
-    env = TwinGymEnv(vae, sde, episode_len=28, device=str(device))
     safety = SafetyGuard()
     reward_fn = MultiObjectiveReward()
     print('=== RL Suite ===')
@@ -30,7 +32,18 @@ def run_rl_eval(checkpoint_dir: str, device) -> dict:
     comparison = compare_with_baseline(actor, env, safety, reward_fn, n_eval=30)
     sac_reward = comparison.get('sac_policy', {}).get('mean_reward', 0)
     random_reward = comparison.get('random_policy', {}).get('mean_reward', 0)
-    return {'sac_mean_reward': float(eval_results['mean_reward']), 'sac_std_reward': float(eval_results['std_reward']), 'sac_mean_violations': float(eval_results['mean_violations']), 'random_mean_reward': float(random_reward), 'improvement_over_random': float(sac_reward - random_reward), 'reward_components': eval_results.get('components', {}), 'comparison': comparison, 'actor_params': sum((p.numel() for p in actor.parameters()))}
+    return {
+        'sac_mean_reward': float(eval_results['mean_reward']),
+        'sac_std_reward': float(eval_results['std_reward']),
+        'sac_mean_violations': float(eval_results['mean_violations']),
+        'random_mean_reward': float(random_reward),
+        'improvement_over_random': float(sac_reward - random_reward),
+        'reward_components': eval_results.get('components', {}),
+        'comparison': comparison,
+        'actor_params': sum((p.numel() for p in actor.parameters())),
+    }
+
+
 if __name__ == '__main__':
     train_cfg = OmegaConf.load('configs/training.yaml')
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
