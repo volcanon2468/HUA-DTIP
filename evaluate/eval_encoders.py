@@ -14,7 +14,15 @@ def loso_imu_eval(processed_dir, checkpoint_dir, n_subjects=10, n_classes=12, de
     all_ids = list(range(1, n_subjects + 1))
     for test_id in all_ids:
         encoder = SWCTNet()
-        ckpt_path = os.path.join(checkpoint_dir, 'encoder_imu.pt')
+        fold_ckpt_path = os.path.join(checkpoint_dir, f'encoder_imu_fold{test_id}.pt')
+        shared_ckpt_path = os.path.join(checkpoint_dir, 'encoder_imu.pt')
+        if os.path.exists(fold_ckpt_path):
+            ckpt_path = fold_ckpt_path
+        else:
+            ckpt_path = shared_ckpt_path
+            if os.path.exists(shared_ckpt_path):
+                print(f'  [warn] no fold-specific checkpoint for subject {test_id}; '
+                      f'using shared encoder_imu.pt (not true LOSO)')
         if os.path.exists(ckpt_path):
             ckpt = torch.load(ckpt_path, map_location=device, weights_only=True)
             ckpt_n_classes = ckpt.get('classifier.weight', torch.empty(0)).shape[0]

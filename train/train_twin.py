@@ -17,6 +17,7 @@ from src.encoders.feature_encoder import FeatureEncoder
 from src.encoders.fusion import CrossModalFusion
 from src.utils.seed import set_seed
 from src.utils.logger import init_run, log_metrics, log_model, finish_run
+from src.preprocessing.daily_summary import DAILY_VECTOR_DIM
 
 
 class WindowDataset(Dataset):
@@ -74,7 +75,10 @@ def _encode_batch(batch, enc_imu, enc_cardio, enc_feat, enc_fusion, hier, device
     h_feat   = enc_feat(feats)
     h_fused  = enc_fusion(h_imu, h_cardio, h_feat)
 
-    z_temporal = hier(h_fused)
+    B = h_fused.shape[0]
+    z_micro_missing = torch.zeros(B, hier.proj_micro[0].in_features, device=device)
+    z_meso_missing  = torch.zeros(B, hier.proj_meso[0].in_features, device=device)
+    z_temporal = hier(z_micro_missing, z_meso_missing, h_fused)
     return z_temporal
 
 
@@ -165,7 +169,8 @@ def train_vae(
                 break
         if epoch % 10 == 0:
             print(
-                f'  [VAE] epoch {epoch:3d}  loss={avg:.4f}  '                f'recon={parts["recon"]:.4f}  kl={parts["kl"]:.4f}'
+                f'  [VAE] epoch {epoch:3d}  loss={avg:.4f}  '
+                f'recon={parts["recon"]:.4f}  kl={parts["kl"]:.4f}'
             )
 
 
@@ -180,7 +185,7 @@ def train_sde(
     sde.train()
     vae.eval()
 
-    daily_proj = nn.Linear(48, 512).to(device)
+    daily_proj = nn.Linear(DAILY_VECTOR_DIM, 512).to(device)
     nn.init.xavier_uniform_(daily_proj.weight)
 
     opt = torch.optim.Adam(
