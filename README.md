@@ -74,7 +74,7 @@ HUA-DTIP/
    source venv/bin/activate  # On Windows: venv\Scripts\activate
    pip install -r requirements.txt
    ```
-
+   *Confirmed core libraries: `torch==2.1.0`, `torchvision==0.16.0`, `torchaudio==2.1.0`, `torchsde==0.2.6`, `neurokit2==0.2.7`, `scipy==1.11.4`, `numpy==1.26.2`, `pandas==2.1.4`, `wandb==0.16.2`, `hydra-core==1.3.2`, `omegaconf==2.3.0`, `scikit-learn==1.3.2`.*
 ---
 
 ## Datasets
@@ -138,6 +138,22 @@ python evaluate/suite_encoders.py
 # Evaluate Digital Twin reconstruction and trajectory forecasting
 python evaluate/suite_twin.py
 ```
+
+---
+
+## Key Dimensions at a Glance
+
+| Component | Input Dim | Output Dim |
+|---|---|---|
+| IMU encoder (`SWCTNet`) | raw IMU window (T × 9) | 256-D |
+| Cardio encoder (`CardioEncoder`) | raw cardio window (T × 2) | 128-D |
+| Feature encoder (`FeatureEncoder`) | 48-D handcrafted vector | 64-D |
+| `CrossModalFusion` | 256 + 128 + 64 (projected to 128 each) | 128-D |
+| `HierarchicalFusion` (micro + meso + macro) | 128-D fused representation, aggregated over time | 512-D |
+| `BayesianVAE` | 512 (`HierarchicalFusion` output) | latent 10 |
+| `LatentNeuralSDE` | latent 10 | latent 10 |
+
+---
 
 **Target metrics (embedded in the evaluation scripts):**
 
